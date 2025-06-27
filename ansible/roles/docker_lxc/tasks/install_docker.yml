@@ -1,0 +1,174 @@
+---
+- name: Install Docker prerequisites
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Install prerequisites
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Add Docker's official GPG key
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    
+    # Add Docker repository
+    echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian '$(lsb_release -cs)' stable' | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Update package index
+    apt-get update
+    "
+  register: docker_prerequisites
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Install Docker Engine
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Install Docker Engine, CLI, and containerd
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+    
+    # Start and enable Docker service
+    systemctl start docker
+    systemctl enable docker
+    
+    # Verify Docker installation
+    docker --version
+    "
+  register: docker_install
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Install Docker Compose
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Download and install Docker Compose
+    curl -L 'https://github.com/docker/compose/releases/download/v{{ docker_config.compose_version }}/docker-compose-linux-x86_64' -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    
+    # Create symbolic link for global access
+    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+    
+    # Verify Docker Compose installation
+    docker-compose --version
+    "
+  register: docker_compose_install
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Configure Docker daemon
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Create Docker daemon configuration directory
+    mkdir -p /etc/docker
+    
+    # Create daemon.json configuration
+    cat > /etc/docker/daemon.json << 'EOF'
+    {
+      \"log-driver\": \"{{ docker_config.daemon_config.log_driver }}\",
+      \"log-opts\": {
+        \"max-size\": \"{{ docker_config.daemon_config.log_opts.max_size }}\",
+        \"max-file\": \"{{ docker_config.daemon_config.log_opts.max_file }}\"
+      },
+      \"storage-driver\": \"{{ docker_config.daemon_config.storage_driver }}\"
+    }
+    EOF
+    
+    # Restart Docker to apply configuration
+    systemctl restart docker
+    "
+  register: docker_daemon_config
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Add users to Docker group
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Add specified users to docker group
+    {% for user in docker_config.docker_users %}
+    if id '{{ user }}' &>/dev/null; then
+      usermod -aG docker {{ user }}
+    fi
+    {% endfor %}
+    "
+  register: docker_users_config
+  when: 
+    - docker_lxc_config.start_after_creation | default(true)
+    - docker_config.docker_users is defined
+
+- name: Verify Docker installation
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Test Docker installation
+    docker run --rm hello-world
+    
+    # Show Docker version info
+    docker version
+    docker-compose version
+    
+    # Show Docker system info
+    docker system info
+    "
+  register: docker_verification
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Create sample docker-compose.yml
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Create sample directory
+    mkdir -p /root/docker-samples
+    
+    # Create sample docker-compose.yml
+    cat > /root/docker-samples/docker-compose.yml << 'EOF'
+    version: '3.8'
+    
+    services:
+      # Example Nginx service
+      nginx:
+        image: nginx:alpine
+        container_name: sample-nginx
+        ports:
+          - '8080:80'
+        volumes:
+          - /opt/volumes/nginx:/usr/share/nginx/html:ro
+        restart: unless-stopped
+        networks:
+          - web
+    
+      # Example Portainer service for Docker management
+      portainer:
+        image: portainer/portainer-ce:latest
+        container_name: portainer
+        ports:
+          - '9000:9000'
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - /opt/volumes/portainer:/data
+        restart: unless-stopped
+        networks:
+          - web
+    
+    networks:
+      web:
+        driver: bridge
+    
+    volumes:
+      nginx_data:
+      portainer_data:
+    EOF
+    
+    echo 'Sample docker-compose.yml created in /root/docker-samples/'
+    echo 'To start the sample services, run:'
+    echo 'cd /root/docker-samples && docker-compose up -d'
+    "
+  register: sample_compose
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Display Docker installation results
+  debug:
+    msg: |
+      Docker installation completed successfully:
+      - Docker Engine: {{ 'Installed' if docker_install.rc == 0 else 'Failed' }}
+      - Docker Compose: {{ 'Installed' if docker_compose_install.rc == 0 else 'Failed' }}
+      - Docker Daemon: {{ 'Configured' if docker_daemon_config.rc == 0 else 'Failed' }}
+      - Verification: {{ 'Passed' if docker_verification.rc == 0 else 'Failed' }}
+      - Sample compose file: {{ 'Created' if sample_compose.rc == 0 else 'Failed' }}
+      
+      Container is ready for Docker workloads!
+      Access the container: pct enter {{ container_id }}
+      Sample services location: /root/docker-samples/

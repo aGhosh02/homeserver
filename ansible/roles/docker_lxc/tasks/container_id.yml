@@ -1,0 +1,48 @@
+---
+- name: Generate container ID if not provided
+  block:
+    - name: Find available container ID
+      shell: |
+        start_range=200
+        end_range=999
+        
+        for try_id in $(seq $start_range $end_range); do
+          if [ ! -f "/etc/pve/qemu-server/${try_id}.conf" ] && [ ! -f "/etc/pve/lxc/${try_id}.conf" ]; then
+            echo $try_id
+            exit 0
+          fi
+        done
+        
+        echo "No available container ID found in range $start_range-$end_range"
+        exit 1
+      register: generated_container_id
+      when: docker_lxc_config.vmid == ""
+
+    - name: Set container ID
+      set_fact:
+        container_id: "{{ docker_lxc_config.vmid if docker_lxc_config.vmid != '' else generated_container_id.stdout }}"
+
+    - name: Validate container ID is numeric
+      fail:
+        msg: "Container ID must be numeric: {{ container_id }}"
+      when: container_id | string | regex_search('^[0-9]+$') is none
+
+    - name: Validate container ID range
+      fail:
+        msg: "Container ID must be between 100 and 999999: {{ container_id }}"
+      when: container_id | int < 100 or container_id | int > 999999
+
+    - name: Check if generated container ID is already in use
+      shell: "test -f /etc/pve/lxc/{{ container_id }}.conf || test -f /etc/pve/qemu-server/{{ container_id }}.conf"
+      register: container_id_check
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if container ID is already in use
+      fail:
+        msg: "Container ID {{ container_id }} is already in use"
+      when: container_id_check.rc == 0
+
+    - name: Display selected container ID
+      debug:
+        msg: "Using container ID: {{ container_id }}"

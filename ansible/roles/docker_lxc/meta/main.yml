@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  author: Homeserver Admin
+  description: Ansible role for creating and configuring Docker LXC containers on Proxmox VE
+  company: Personal
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+  galaxy_tags:
+    - proxmox
+    - lxc
+    - docker
+    - containers
+    - virtualization
+
+dependencies:
+  - role: common
+    when: docker_lxc_validation.check_host_resources | default(true)

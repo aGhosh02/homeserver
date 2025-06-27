@@ -1,0 +1,37 @@
+---
+- name: Create host directories for bind mounts
+  file:
+    path: "{{ item.host_path }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop: "{{ docker_lxc_config.mount_points }}"
+  when: docker_lxc_config.mount_points is defined
+
+- name: Ensure Docker data directory exists
+  file:
+    path: "/opt/docker-data"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Ensure Docker volumes directory exists
+  file:
+    path: "/opt/docker-volumes"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create temporary directory for container setup
+  file:
+    path: "{{ docker_lxc_download.temp_dir }}"
+    state: directory
+    mode: '0755'
+  register: temp_dir_created
+
+- name: Set cleanup flag for temporary directory
+  set_fact:
+    cleanup_temp_dir: "{{ temp_dir_created.changed }}"

@@ -1,0 +1,54 @@
+---
+- name: Start Docker LXC container
+  shell: "pct start {{ container_id }}"
+  register: container_start
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Wait for container to fully start
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Test container connectivity
+  shell: "pct exec {{ container_id }} -- echo 'Container is responsive'"
+  register: container_test
+  retries: 5
+  delay: 10
+  until: container_test.rc == 0
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Update container package lists
+  shell: "pct exec {{ container_id }} -- apt-get update"
+  register: apt_update
+  when: docker_lxc_config.start_after_creation | default(true)
+
+- name: Install basic packages in container
+  shell: "pct exec {{ container_id }} -- apt-get install -y {{ docker_config.packages | join(' ') }}"
+  register: package_install
+  when: 
+    - docker_lxc_config.start_after_creation | default(true)
+    - docker_config.packages is defined
+
+- name: Create container directories
+  shell: "pct exec {{ container_id }} -- mkdir -p {{ item.container_path }}"
+  loop: "{{ docker_lxc_config.mount_points }}"
+  when: 
+    - docker_lxc_config.start_after_creation | default(true)
+    - docker_lxc_config.mount_points is defined
+
+- name: Set proper permissions on container directories
+  shell: "pct exec {{ container_id }} -- chown -R root:root {{ item.container_path }}"
+  loop: "{{ docker_lxc_config.mount_points }}"
+  when:
+    - docker_lxc_config.start_after_creation | default(true)
+    - docker_lxc_config.mount_points is defined
+
+- name: Display container configuration status
+  debug:
+    msg: |
+      Container configuration completed:
+      - Container ID: {{ container_id }}
+      - Started: {{ container_start.rc == 0 if container_start is defined else 'Not started' }}
+      - Packages installed: {{ package_install.rc == 0 if package_install is defined else 'Skipped' }}
+      - Directories created: {{ docker_lxc_config.mount_points | length if docker_lxc_config.mount_points is defined else 0 }}

@@ -1,0 +1,328 @@
+# Docker Compose Template for Homeserver Services
+# This template provides common services for a homeserver setup
+# Customize according to your needs
+
+version: '3.8'
+
+networks:
+  homeserver:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  # Portainer - Docker Management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/volumes/portainer:/data
+    networks:
+      - homeserver
+
+  # Nginx Proxy Manager - Reverse Proxy with Web UI
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+    volumes:
+      - /opt/volumes/nginx-proxy-manager/data:/data
+      - /opt/volumes/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+    networks:
+      - homeserver
+
+  # Jellyfin - Media Server
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+    volumes:
+      - /opt/volumes/jellyfin/config:/config
+      - /opt/volumes/jellyfin/cache:/cache
+      - /media:/media:ro
+    environment:
+      - JELLYFIN_PublishedServerUrl=http://jellyfin.local
+    networks:
+      - homeserver
+
+  # Nextcloud - Personal Cloud Storage
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /opt/volumes/nextcloud:/var/www/html
+      - /opt/volumes/nextcloud-data:/var/www/html/data
+    environment:
+      - MYSQL_HOST=nextcloud-db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=secure_password
+    depends_on:
+      - nextcloud-db
+    networks:
+      - homeserver
+
+  # Nextcloud Database
+  nextcloud-db:
+    image: mariadb:latest
+    container_name: nextcloud-db
+    restart: unless-stopped
+    volumes:
+      - /opt/volumes/nextcloud-db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=secure_root_password
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=secure_password
+    networks:
+      - homeserver
+
+  # Bitwarden - Password Manager
+  bitwarden:
+    image: vaultwarden/server:latest
+    container_name: bitwarden
+    restart: unless-stopped
+    ports:
+      - "8200:80"
+    volumes:
+      - /opt/volumes/bitwarden:/data
+    environment:
+      - WEBSOCKET_ENABLED=true
+    networks:
+      - homeserver
+
+  # Grafana - Monitoring Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /opt/volumes/grafana:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - homeserver
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - /opt/volumes/prometheus:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - homeserver
+
+  # Node Exporter - System Metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/host'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - homeserver
+
+  # Uptime Kuma - Uptime Monitoring
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /opt/volumes/uptime-kuma:/app/data
+    networks:
+      - homeserver
+
+  # Adguard Home - DNS Ad Blocker
+  adguard:
+    image: adguard/adguardhome:latest
+    container_name: adguard
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "3010:3000"
+    volumes:
+      - /opt/volumes/adguard/work:/opt/adguardhome/work
+      - /opt/volumes/adguard/conf:/opt/adguardhome/conf
+    networks:
+      - homeserver
+
+  # Pihole - Alternative DNS Ad Blocker (choose one)
+  # pihole:
+  #   image: pihole/pihole:latest
+  #   container_name: pihole
+  #   restart: unless-stopped
+  #   ports:
+  #     - "53:53/tcp"
+  #     - "53:53/udp"
+  #     - "8088:80"
+  #   volumes:
+  #     - /opt/volumes/pihole/etc:/etc/pihole
+  #     - /opt/volumes/pihole/dnsmasq:/etc/dnsmasq.d
+  #   environment:
+  #     - WEBPASSWORD=secure_password
+  #   networks:
+  #     - homeserver
+
+  # Homebridge - HomeKit Bridge
+  homebridge:
+    image: oznu/homebridge:latest
+    container_name: homebridge
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /opt/volumes/homebridge:/homebridge
+    environment:
+      - PGID=1000
+      - PUID=1000
+      - HOMEBRIDGE_CONFIG_UI=1
+      - HOMEBRIDGE_CONFIG_UI_PORT=8581
+
+  # Syncthing - File Synchronization
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: syncthing
+    restart: unless-stopped
+    ports:
+      - "8384:8384"
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+    volumes:
+      - /opt/volumes/syncthing:/var/syncthing
+    networks:
+      - homeserver
+
+  # Transmission - BitTorrent Client
+  transmission:
+    image: linuxserver/transmission:latest
+    container_name: transmission
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+      - "51413:51413/tcp"
+      - "51413:51413/udp"
+    volumes:
+      - /opt/volumes/transmission/config:/config
+      - /opt/volumes/transmission/downloads:/downloads
+      - /opt/volumes/transmission/watch:/watch
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    networks:
+      - homeserver
+
+  # Jackett - Torrent Indexer Proxy
+  jackett:
+    image: linuxserver/jackett:latest
+    container_name: jackett
+    restart: unless-stopped
+    ports:
+      - "9117:9117"
+    volumes:
+      - /opt/volumes/jackett:/config
+      - /opt/volumes/transmission/downloads:/downloads
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    networks:
+      - homeserver
+
+  # Sonarr - TV Show Management
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    ports:
+      - "8989:8989"
+    volumes:
+      - /opt/volumes/sonarr:/config
+      - /media/tv:/tv
+      - /opt/volumes/transmission/downloads:/downloads
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    networks:
+      - homeserver
+
+  # Radarr - Movie Management
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    ports:
+      - "7878:7878"
+    volumes:
+      - /opt/volumes/radarr:/config
+      - /media/movies:/movies
+      - /opt/volumes/transmission/downloads:/downloads
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    networks:
+      - homeserver
+
+  # Bazarr - Subtitle Management
+  bazarr:
+    image: linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    ports:
+      - "6767:6767"
+    volumes:
+      - /opt/volumes/bazarr:/config
+      - /media/movies:/movies
+      - /media/tv:/tv
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    networks:
+      - homeserver
+
+# Volume definitions for external volumes
+volumes:
+  portainer_data:
+  grafana_data:
+  prometheus_data:
+  nextcloud_data:
+  nextcloud_db_data:

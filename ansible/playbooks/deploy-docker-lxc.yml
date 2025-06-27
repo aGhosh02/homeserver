@@ -1,0 +1,106 @@
+---
+- name: Deploy Docker LXC Container
+  hosts: proxmox
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Override default configuration if needed
+    docker_lxc_override:
+      hostname: "docker-services"
+      vmid: ""  # Auto-generate
+      memory: 16384  # 16GB RAM
+      cpu:
+        cores: 4
+      disk_size: "100G"
+      network:
+        ip: "dhcp"  # or set static IP like "192.168.1.100/24"
+        bridge: "vmbr0"
+      start_after_creation: true
+      onboot: true
+    
+    # Validation configuration override (disable Proxmox check for testing)
+    docker_lxc_validation_override:
+      check_proxmox_host: false  # Set to true for production deployment
+      check_host_resources: false  # Set to true for production deployment
+      check_storage_space: false  # Set to true for production deployment
+    
+    # Docker configuration override
+    docker_config_override:
+      compose_version: "2.24.5"
+      packages:
+        - "curl"
+        - "wget"
+        - "gnupg"
+        - "lsb-release" 
+        - "ca-certificates"
+        - "software-properties-common"
+        - "apt-transport-https"
+        - "git"
+        - "nano"
+        - "htop"
+        - "tree"
+        - "unzip"
+        - "jq"
+        - "vim"
+  
+  pre_tasks:
+    - name: Merge Docker configuration
+      set_fact:
+        docker_config: "{{ docker_config | combine(docker_config_override | default({}), recursive=true) }}"
+      when: docker_config_override is defined
+    
+    - name: Display deployment information
+      debug:
+        msg: |
+          Starting Docker LXC container deployment...
+          Target host: {{ ansible_hostname }}
+          Container hostname: {{ docker_lxc_override.hostname | default('docker-host') }}
+          Memory: {{ docker_lxc_override.memory | default(16384) }}MB
+          CPU Cores: {{ docker_lxc_override.cpu.cores | default(4) }}
+          Disk Size: {{ docker_lxc_override.disk_size | default('100G') }}
+
+  roles:
+    - role: docker_lxc
+  
+  post_tasks:
+    - name: Display post-deployment instructions
+      debug:
+        msg: |
+          ==============================================
+          Docker LXC Container Deployment Complete!
+          ==============================================
+          
+          Container Access:
+            - Container ID: {{ docker_container_id | default('Check Proxmox UI') }}
+            - Enter container: pct enter {{ docker_container_id | default('[ID]') }}
+            - Container hostname: {{ docker_lxc_override.hostname | default('docker-host') }}
+          
+          Docker Services:
+            - Docker status: systemctl status docker
+            - Docker version: docker --version
+            - Docker Compose: docker-compose --version
+          
+          Sample Applications:
+            - Location: /root/docker-samples/
+            - Start samples: cd /root/docker-samples && docker-compose up -d
+            - Portainer UI: http://[container-ip]:9000 (for Docker management)
+            - Sample Nginx: http://[container-ip]:8080
+          
+          Useful Commands:
+            - View containers: docker ps
+            - View images: docker images
+            - View logs: docker logs [container-name]
+            - Stop all: docker-compose down
+          
+          Data Persistence:
+            - Docker data: /var/lib/docker (mounted from host /opt/docker-data)
+            - Application volumes: /opt/volumes (mounted from host /opt/docker-volumes)
+          
+          ==============================================
+      when: docker_container_created | default(false)
+
+  handlers:
+    - name: container created notification
+      debug:
+        msg: "Docker LXC container has been successfully created and configured!"

@@ -1,0 +1,62 @@
+---
+- name: Clean up temporary directory
+  file:
+    path: "{{ docker_lxc_download.temp_dir }}"
+    state: absent
+  when: cleanup_temp_dir | default(false)
+
+- name: Clean up any temporary files from container
+  shell: |
+    pct exec {{ container_id }} -- bash -c "
+    # Clean up apt cache
+    apt-get clean
+    apt-get autoremove -y
+    
+    # Clean up temporary files
+    rm -rf /tmp/* /var/tmp/*
+    
+    # Clean up log files
+    find /var/log -type f -name '*.log' -exec truncate -s 0 {} \;
+    "
+  register: container_cleanup
+  failed_when: false
+  when: docker_container_created | default(false)
+
+- name: Display cleanup results
+  debug:
+    msg: |
+      Cleanup completed:
+      - Temporary directory: {{ 'Removed' if cleanup_temp_dir | default(false) else 'Not created' }}
+      - Container cleanup: {{ 'Completed' if container_cleanup.rc == 0 else 'Skipped' }}
+
+- name: Display final summary
+  debug:
+    msg: |
+      ========================================
+      Docker LXC Container Deployment Summary
+      ========================================
+      
+      Container Details:
+      - Container ID: {{ container_id | default('Not created') }}
+      - Hostname: {{ container_hostname | default('Not set') }}
+      - CPU Cores: {{ container_cores | default('Not set') }}
+      - Memory: {{ container_memory | default('Not set') }}MB
+      - Storage: {{ container_storage | default('Not set') }}
+      - Disk Size: {{ container_disk_size | default('Not set') }}
+      
+      Network Configuration:
+      - Bridge: {{ container_network_bridge | default('Not set') }}
+      - IP: {{ container_network_ip | default('Not set') }}
+      
+      Status:
+      - Container Created: {{ docker_container_created | default(false) }}
+      - Docker Installed: {{ docker_install.rc == 0 if docker_install is defined else false }}
+      - Docker Compose Installed: {{ docker_compose_install.rc == 0 if docker_compose_install is defined else false }}
+      
+      Next Steps:
+      1. Access container: pct enter {{ container_id | default('[ID]') }}
+      2. Check Docker status: systemctl status docker
+      3. Try sample services: cd /root/docker-samples && docker-compose up -d
+      4. Access Portainer (if running): http://[container-ip]:9000
+      
+      ========================================

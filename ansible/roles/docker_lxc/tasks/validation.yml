@@ -1,0 +1,75 @@
+---
+- name: Check if running on Proxmox host
+  shell: "pveversion --version"
+  register: pve_version_check
+  failed_when: false
+  changed_when: false
+  tags: ['validation']
+  when: docker_lxc_validation.check_proxmox_host | default(true)
+
+- name: Fail if not running on Proxmox
+  fail:
+    msg: "This role must be run on a Proxmox VE host"
+  when: 
+    - docker_lxc_validation.check_proxmox_host | default(true)
+    - pve_version_check.rc != 0
+  tags: ['validation']
+
+- name: Check available CPU cores
+  shell: "nproc"
+  register: available_cores
+  changed_when: false
+  failed_when: false
+  tags: ['validation']
+
+- name: Validate CPU requirements
+  fail:
+    msg: "Insufficient CPU cores. Required: {{ docker_lxc_validation.min_cpu_cores }}, Available: {{ available_cores.stdout | default('unknown') }}"
+  when: 
+    - docker_lxc_validation.check_host_resources | default(true)
+    - available_cores.stdout is defined
+    - available_cores.stdout | string | length > 0
+    - available_cores.stdout | int < docker_lxc_validation.min_cpu_cores | default(2)
+  tags: ['validation']
+
+- name: Check available memory
+  shell: "free -m | awk '/^Mem:/ {print $2}'"
+  register: available_memory
+  changed_when: false
+  failed_when: false
+  tags: ['validation']
+
+- name: Validate memory requirements
+  fail:
+    msg: "Insufficient memory. Required: {{ docker_lxc_validation.min_memory_mb }}MB, Available: {{ available_memory.stdout | default('unknown') }}MB"
+  when:
+    - docker_lxc_validation.check_host_resources | default(true)
+    - available_memory.stdout is defined
+    - available_memory.stdout | string | length > 0
+    - available_memory.stdout | int < docker_lxc_validation.min_memory_mb | default(8192)
+  tags: ['validation']
+
+- name: Check if LXC template exists
+  shell: "pveam list local | grep -q '{{ docker_lxc_config.ostemplate }}'"
+  register: template_check
+  failed_when: false
+  changed_when: false
+  tags: ['validation']
+
+- name: Download LXC template if not exists
+  shell: "pveam download local {{ docker_lxc_config.ostemplate }}"
+  when: template_check.rc != 0
+  tags: ['validation']
+
+- name: Validate network bridge exists
+  shell: "ip link show {{ container_network_bridge }}"
+  register: bridge_check
+  failed_when: false
+  changed_when: false
+  tags: ['validation']
+
+- name: Fail if network bridge doesn't exist
+  fail:
+    msg: "Network bridge {{ container_network_bridge }} does not exist"
+  when: bridge_check.rc != 0
+  tags: ['validation']

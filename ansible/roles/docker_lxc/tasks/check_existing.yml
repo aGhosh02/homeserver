@@ -1,0 +1,53 @@
+---
+- name: Check if Docker LXC container already exists by hostname
+  shell: |
+    for conf in /etc/pve/lxc/*.conf; do
+      if [ -f "$conf" ]; then
+        if grep -q "hostname: {{ container_hostname }}" "$conf" 2>/dev/null; then
+          basename "$conf" .conf
+          exit 0
+        fi
+      fi
+    done
+    exit 1
+  register: existing_container_by_hostname
+  failed_when: false
+  changed_when: false
+
+- name: Check if Docker LXC container already exists by VMID
+  shell: "test -f /etc/pve/lxc/{{ docker_lxc_config.vmid }}.conf"
+  register: existing_container_by_vmid
+  failed_when: false
+  changed_when: false
+  when: docker_lxc_config.vmid != ""
+
+- name: Set container existence facts
+  set_fact:
+    container_exists_by_hostname: "{{ existing_container_by_hostname.rc == 0 }}"
+    container_exists_by_vmid: "{{ existing_container_by_vmid.rc == 0 if docker_lxc_config.vmid != '' else false }}"
+    existing_container_id: "{{ existing_container_by_hostname.stdout if existing_container_by_hostname.rc == 0 else '' }}"
+
+- name: Display existing container information
+  debug:
+    msg: |
+      Docker LXC container status:
+      - Exists by hostname ({{ container_hostname }}): {{ container_exists_by_hostname }}
+      - Exists by VMID ({{ docker_lxc_config.vmid }}): {{ container_exists_by_vmid }}
+      - Existing container ID: {{ existing_container_id }}
+  when: container_exists_by_hostname or container_exists_by_vmid
+
+- name: Skip creation if container already exists and skip flag is set
+  meta: end_play
+  when:
+    - docker_lxc_skip_if_exists | default(true)
+    - container_exists_by_hostname or container_exists_by_vmid
+
+- name: Warn about existing container
+  debug:
+    msg: |
+      WARNING: A Docker LXC container with hostname '{{ container_hostname }}' already exists (ID: {{ existing_container_id }}).
+      Continuing with creation as docker_lxc_skip_if_exists is set to false.
+      This may cause conflicts.
+  when:
+    - not (docker_lxc_skip_if_exists | default(true))
+    - container_exists_by_hostname

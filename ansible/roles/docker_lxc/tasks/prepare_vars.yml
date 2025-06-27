@@ -1,0 +1,37 @@
+---
+- name: Set default Docker LXC configuration
+  set_fact:
+    docker_lxc_config: "{{ docker_lxc | combine(docker_lxc_override | default({}), recursive=true) }}"
+
+- name: Set validation configuration
+  set_fact:
+    docker_lxc_validation: "{{ docker_lxc_validation | combine(docker_lxc_validation_override | default({}), recursive=true) }}"
+
+- name: Debug Docker LXC configuration
+  debug:
+    var: docker_lxc_config
+    verbosity: 2
+
+- name: Set container hostname
+  set_fact:
+    container_hostname: "{{ docker_lxc_config.hostname | default('docker-host') }}"
+
+- name: Set container memory configuration
+  set_fact:
+    container_memory: "{{ docker_lxc_config.memory | default(16384) }}"
+    container_swap: "{{ docker_lxc_config.memory_swap | default(16384) }}"
+
+- name: Set container CPU configuration
+  set_fact:
+    container_cores: "{{ docker_lxc_config.cpu.cores | default(4) }}"
+    container_cpu_limit: "{{ docker_lxc_config.cpu.limit | default(4) }}"
+
+- name: Set container disk size
+  set_fact:
+    container_disk_size: "{{ docker_lxc_config.disk_size | default('100G') }}"
+
+- name: Set network configuration
+  set_fact:
+    container_network_bridge: "{{ docker_lxc_config.network.bridge | default('vmbr0') }}"
+    container_network_ip: "{{ docker_lxc_config.network.ip | default('dhcp') }}"
+    container_network_gateway: "{{ docker_lxc_config.network.gateway | default('') }}"

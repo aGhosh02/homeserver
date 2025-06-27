@@ -1,0 +1,103 @@
+---
+# Docker LXC Container Configuration
+docker_lxc:
+  # Container Basic Configuration
+  vmid: ""  # Will be auto-generated if not set
+  hostname: "docker-host"
+  disk_size: "100G"
+  
+  # Hardware Configuration
+  cpu:
+    cores: 4
+    limit: 4
+  memory: 16384  # MB (16GB)
+  memory_swap: 16384  # MB (16GB swap)
+  
+  # Network Configuration
+  network:
+    bridge: "vmbr0"
+    ip: "dhcp"  # or specify static IP like "192.168.1.100/24"
+    gateway: ""  # Will use default gateway if not specified
+    vlan_tag: ""
+    mtu: ""
+  
+  # Storage Configuration
+  storage:
+    location: ""  # Will be auto-detected to find rootdir-compatible storage
+    thin_provisioning: true  # Note: Controlled at storage level, not in container creation
+  
+  # Container Behavior
+  privileged: true  # Required for Docker
+  start_after_creation: true
+  onboot: true
+  nesting: true  # Enable nesting for Docker
+  keyctl: true   # Enable keyctl for Docker
+  
+  # OS Configuration
+  ostemplate: "debian-12-standard_12.7-1_amd64.tar.zst"
+  ostype: "debian"
+  
+  # Features
+  features:
+    - "nesting=1"
+    - "keyctl=1"
+  
+  # Mount Points for Data Persistence
+  mount_points:
+    - mp: "mp0"
+      host_path: "/opt/docker-data"
+      container_path: "/var/lib/docker"
+      backup: false
+    - mp: "mp1" 
+      host_path: "/opt/docker-volumes"
+      container_path: "/opt/volumes"
+      backup: true
+
+# Docker Configuration
+docker_config:
+  # Docker Compose version
+  compose_version: "2.24.5"
+  
+  # Additional packages to install
+  packages:
+    - "curl"
+    - "wget"
+    - "gnupg"
+    - "lsb-release"
+    - "ca-certificates"
+    - "software-properties-common"
+    - "apt-transport-https"
+    - "git"
+    - "nano"
+    - "htop"
+    - "tree"
+    - "unzip"
+  
+  # Docker daemon configuration
+  daemon_config:
+    log_driver: "json-file"
+    log_opts:
+      max_size: "10m"
+      max_file: "3"
+    storage_driver: "overlay2"
+    
+  # User configuration
+  docker_users:
+    - "root"
+
+# Download Configuration
+docker_lxc_download:
+  temp_dir: "/tmp/docker-lxc-ansible"
+  timeout: 600
+
+# Container Existence Check Configuration
+docker_lxc_skip_if_exists: true  # Skip container creation if Docker LXC already exists
+
+# Validation Configuration
+docker_lxc_validation:
+  check_proxmox_host: true
+  check_host_resources: true
+  check_storage_space: true
+  min_cpu_cores: 2
+  min_memory_mb: 8192
+  min_disk_space_gb: 50

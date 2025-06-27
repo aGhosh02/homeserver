@@ -1,0 +1,40 @@
+---
+- name: Prepare variables and merge defaults
+  include_tasks: prepare_vars.yml
+  tags: ['always']
+
+- name: Include validation tasks
+  include_tasks: validation.yml
+  tags: ['validation', 'always']
+
+- name: Check for existing Docker LXC container
+  include_tasks: check_existing.yml
+  tags: ['check-container', 'always']
+
+- name: Include container ID generation tasks
+  include_tasks: container_id.yml
+  tags: ['container-setup']
+
+- name: Include storage detection tasks
+  include_tasks: storage.yml
+  tags: ['storage', 'container-setup']
+
+- name: Include host preparation tasks
+  include_tasks: prepare_host.yml
+  tags: ['prepare-host', 'container-setup']
+
+- name: Include LXC container creation tasks
+  include_tasks: create_container.yml
+  tags: ['create-container', 'container-setup']
+
+- name: Include container configuration tasks
+  include_tasks: configure_container.yml
+  tags: ['configure-container', 'container-setup']
+
+- name: Include Docker installation tasks
+  include_tasks: install_docker.yml
+  tags: ['install-docker', 'container-setup']
+
+- name: Include cleanup tasks
+  include_tasks: cleanup.yml
+  tags: ['cleanup', 'always']

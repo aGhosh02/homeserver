@@ -1,0 +1,147 @@
+---
+- name: Auto-detect storage location if not provided
+  block:
+    - name: Get available storage locations
+      shell: "pvesh get /storage --output-format json"
+      register: storage_list
+      changed_when: false
+
+    - name: Parse storage information
+      set_fact:
+        available_storages: "{{ storage_list.stdout | from_json }}"
+
+    - name: Filter suitable storage locations for containers
+      set_fact:
+        suitable_storages: "{{ available_storages | selectattr('content', 'search', 'rootdir') | list }}"
+
+    - name: Debug available storage options
+      debug:
+        msg: |
+          Available storages: {{ available_storages | map(attribute='storage') | list }}
+          Suitable storages: {{ suitable_storages | map(attribute='storage') | list }}
+
+    - name: Prefer container-friendly storage
+      set_fact:
+        preferred_storage: >-
+          {{
+            suitable_storages | selectattr('storage', 'equalto', 'local-lvm') | list | first | default(
+            suitable_storages | selectattr('storage', 'regex', '.*lvm.*') | list | first | default(
+            suitable_storages | first))
+          }}
+      when: suitable_storages | length > 0
+
+    - name: Select best storage location
+      set_fact:
+        selected_storage: "{{ preferred_storage }}"
+      when: suitable_storages | length > 0
+
+    - name: Fail if no suitable storage found
+      fail:
+        msg: |
+          No suitable storage location found for LXC containers.
+          Available storages: {{ available_storages | map(attribute='storage') | join(', ') }}
+          Storages with container support: {{ suitable_storages | map(attribute='storage') | join(', ') }}
+          
+          To fix this:
+          1. Ensure you have storage configured for container directories (content: rootdir)
+          2. Common options: local-lvm, local-zfs, or directory storage
+          3. Check: pvesh get /storage --output-format json
+      when: suitable_storages | length == 0
+
+    - name: Set storage location
+      set_fact:
+        container_storage: "{{ docker_lxc_config.storage.location if docker_lxc_config.storage.location != '' else selected_storage.storage }}"
+
+    - name: Display selected storage
+      debug:
+        msg: "Using storage location: {{ container_storage }}"
+  when: docker_lxc_config.storage.location == ""
+
+- name: Set storage location when specified in config
+  set_fact:
+    container_storage: "{{ docker_lxc_config.storage.location }}"
+  when: docker_lxc_config.storage.location != ""
+
+- name: Validate selected storage exists
+  shell: "pvesh get /storage/{{ container_storage }}"
+  register: storage_validation
+  failed_when: false
+  changed_when: false
+  when: docker_lxc_validation.check_storage_space | default(true)
+
+- name: Fail if storage doesn't exist
+  fail:
+    msg: "Storage '{{ container_storage }}' does not exist or is not accessible"
+  when:
+    - docker_lxc_validation.check_storage_space | default(true)
+    - storage_validation.rc != 0
+
+- name: Check available space on selected storage
+  shell: |
+    # Try to get storage status - if command fails, skip space check
+    if pvesh get /nodes/{{ ansible_hostname }}/storage/{{ container_storage }}/status >/dev/null 2>&1; then
+      # Extract available space using grep and awk instead of jq
+      pvesh get /nodes/{{ ansible_hostname }}/storage/{{ container_storage }}/status | \
+      grep -o '"avail":[0-9]*' | cut -d':' -f2 || echo "0"
+    else
+      echo "0"
+    fi
+  register: storage_space_check
+  changed_when: false
+  failed_when: false
+
+- name: Convert disk size to bytes for comparison
+  set_fact:
+    required_bytes: "{{ (container_disk_size | regex_replace('G$', '') | int) * 1024 * 1024 * 1024 }}"
+
+- name: Validate sufficient storage space
+  fail:
+    msg: "Insufficient storage space. Required: {{ container_disk_size }}, Available: {{ (storage_space_check.stdout | default('0') | int / 1024 / 1024 / 1024) | round(2) }}GB"
+  when:
+    - docker_lxc_validation.check_storage_space | default(true)
+    - storage_space_check.stdout is defined
+    - storage_space_check.stdout != ""
+    - storage_space_check.stdout != "0"
+    - storage_space_check.stdout | int < required_bytes | int
+
+- name: Set default storage if auto-detection fails or is disabled
+  set_fact:
+    container_storage: "local"
+  when: 
+    - docker_lxc_config.storage.location == ""
+    - (container_storage is not defined or container_storage == "")
+
+- name: Display final storage configuration
+  debug:
+    msg: "Final storage configuration: {{ container_storage }}"
+
+- name: Validate storage supports container directories
+  shell: "pvesh get /storage/{{ container_storage }} --output-format json"
+  register: storage_content_check
+  failed_when: false
+  changed_when: false
+  when: docker_lxc_validation.check_storage_space | default(true)
+
+- name: Check if storage supports rootdir content
+  set_fact:
+    storage_supports_containers: "{{ (storage_content_check.stdout | from_json).content | regex_search('rootdir') is not none }}"
+  when: 
+    - docker_lxc_validation.check_storage_space | default(true)
+    - storage_content_check.rc == 0
+
+- name: Fail if storage doesn't support containers
+  fail:
+    msg: |
+      Storage '{{ container_storage }}' does not support container directories.
+      Storage content types: {{ (storage_content_check.stdout | from_json).content | default('unknown') }}
+      
+      Please use a storage that supports 'rootdir' content, such as:
+      - local-lvm (LVM thin)
+      - local-zfs (ZFS)
+      - Directory storage configured for containers
+      
+      Check available storage: pvesh get /storage --output-format json
+  when:
+    - docker_lxc_validation.check_storage_space | default(true)
+    - storage_content_check.rc == 0
+    - not storage_supports_containers | default(true)

@@ -50,6 +50,10 @@ help: ## Show this help message
 	@echo "  • $(WHITE)make test$(RESET)          - Run all tests"
 	@echo "  • $(WHITE)make clean$(RESET)         - Clean temporary files"
 	@echo ""
+	@echo "$(YELLOW)🐳 Docker LXC:$(RESET)"
+	@echo "  • $(WHITE)make deploy-docker-lxc$(RESET) - Deploy Docker container platform"
+	@echo "  • $(WHITE)make docker-lxc-status CONTAINER_ID=200$(RESET) - Check container status"
+	@echo ""
 
 info: ## Show project information
 	@echo "$(CYAN)$(BOLD)📊 Project Information$(RESET)"
@@ -147,6 +151,7 @@ syntax-check: ## Check syntax of all playbooks
 	cd ansible && ansible-playbook playbooks/maintenance.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/deploy-haos.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/deploy-omv.yml --syntax-check
+	cd ansible && ansible-playbook playbooks/deploy-docker-lxc.yml --syntax-check
 
 inventory: ## Show inventory information
 	@echo "📋 Inventory information:"
@@ -234,6 +239,125 @@ deploy-omv-check: ## Check OpenMediaVault deployment (dry-run)
 deploy-omv-force: ## Force deploy OpenMediaVault VM (even if exists)
 	@echo "$(BLUE)💾 Force deploying OpenMediaVault VM...$(RESET)"
 	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-omv.yml -e omv_skip_if_exists=false
+
+# Docker LXC deployment targets
+deploy-docker-lxc: ## Deploy Docker LXC container (16GB RAM, 4 cores, 100GB disk)
+	@echo "$(BLUE)🐳 Deploying Docker LXC container...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-docker-lxc.yml
+
+deploy-docker-lxc-check: ## Check Docker LXC deployment (dry-run)
+	@echo "$(BLUE)🔍 Checking Docker LXC deployment...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-docker-lxc.yml --check --diff
+
+deploy-docker-lxc-check-no-validation: ## Check Docker LXC deployment without host validation (for development)
+	@echo "$(BLUE)🔍 Checking Docker LXC deployment (no validation)...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-docker-lxc.yml --check --diff --skip-tags validation
+
+deploy-docker-lxc-force: ## Force deploy Docker LXC container (even if exists)
+	@echo "$(BLUE)🐳 Force deploying Docker LXC container...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-docker-lxc.yml -e docker_lxc_skip_if_exists=false
+
+deploy-docker-lxc-custom: ## Deploy Docker LXC with custom configuration (use HOSTNAME, MEMORY, CPU_CORES, DISK_SIZE, IP variables)
+	@echo "$(BLUE)🐳 Deploying Docker LXC container with custom configuration...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-docker-lxc.yml \
+		$(if $(HOSTNAME),-e 'docker_lxc_override.hostname=$(HOSTNAME)') \
+		$(if $(MEMORY),-e 'docker_lxc_override.memory=$(MEMORY)') \
+		$(if $(CPU_CORES),-e 'docker_lxc_override.cpu.cores=$(CPU_CORES)') \
+		$(if $(DISK_SIZE),-e 'docker_lxc_override.disk_size=$(DISK_SIZE)') \
+		$(if $(IP),-e 'docker_lxc_override.network.ip=$(IP)')
+
+# Docker LXC management targets (require CONTAINER_ID variable)
+docker-lxc-start: ## Start Docker LXC container (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)▶️  Starting Docker LXC container $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-start CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct start $(CONTAINER_ID)
+	@echo "$(GREEN)✅ Container $(CONTAINER_ID) started$(RESET)"
+
+docker-lxc-stop: ## Stop Docker LXC container (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)⏹️  Stopping Docker LXC container $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-stop CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct stop $(CONTAINER_ID)
+	@echo "$(GREEN)✅ Container $(CONTAINER_ID) stopped$(RESET)"
+
+docker-lxc-restart: ## Restart Docker LXC container (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)🔄 Restarting Docker LXC container $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-restart CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct restart $(CONTAINER_ID)
+	@echo "$(GREEN)✅ Container $(CONTAINER_ID) restarted$(RESET)"
+
+docker-lxc-status: ## Show Docker LXC container status (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)📊 Docker LXC container $(CONTAINER_ID) status:$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-status CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct status $(CONTAINER_ID)
+	@echo "\n$(BLUE)🐳 Docker service status:$(RESET)"
+	@pct exec $(CONTAINER_ID) -- systemctl status docker --no-pager --lines=5 2>/dev/null || echo "$(YELLOW)Container not running or Docker not installed$(RESET)"
+	@echo "\n$(BLUE)📦 Docker containers:$(RESET)"
+	@pct exec $(CONTAINER_ID) -- docker ps 2>/dev/null || echo "$(YELLOW)Docker not accessible$(RESET)"
+
+docker-lxc-enter: ## Enter Docker LXC container shell (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)🚪 Entering Docker LXC container $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-enter CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct enter $(CONTAINER_ID)
+
+docker-lxc-logs: ## Show Docker LXC container logs (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)📋 Docker LXC container $(CONTAINER_ID) logs:$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-logs CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@journalctl -u pve-container@$(CONTAINER_ID) -n 50 --no-pager
+
+docker-lxc-destroy: ## Destroy Docker LXC container (requires CONTAINER_ID=xxx and CONFIRM=yes)
+	@echo "$(RED)💀 Destroying Docker LXC container $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-destroy CONTAINER_ID=200 CONFIRM=yes$(RESET)"; exit 1; fi
+	@if [ "$(CONFIRM)" != "yes" ]; then echo "$(RED)❌ Error: This is destructive! Add CONFIRM=yes to proceed$(RESET)"; exit 1; fi
+	@pct stop $(CONTAINER_ID) 2>/dev/null || true
+	@pct destroy $(CONTAINER_ID)
+	@echo "$(GREEN)✅ Container $(CONTAINER_ID) destroyed$(RESET)"
+
+# Docker container management inside LXC (requires CONTAINER_ID=xxx)
+docker-lxc-ps: ## List Docker containers inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)📦 Docker containers in LXC $(CONTAINER_ID):$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-ps CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- docker ps -a
+
+docker-lxc-images: ## List Docker images inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)🏗️  Docker images in LXC $(CONTAINER_ID):$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-images CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- docker images
+
+docker-lxc-volumes: ## List Docker volumes inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)💾 Docker volumes in LXC $(CONTAINER_ID):$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-volumes CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- docker volume ls
+
+docker-lxc-stats: ## Show Docker container stats inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)📊 Docker container stats in LXC $(CONTAINER_ID):$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-stats CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- docker stats --no-stream
+
+docker-lxc-prune: ## Clean up Docker system inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)🧹 Cleaning Docker system in LXC $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-prune CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- docker system prune -f
+	@echo "$(GREEN)✅ Docker system cleaned$(RESET)"
+
+# Sample services management (requires CONTAINER_ID=xxx)
+docker-lxc-samples-start: ## Start sample Docker services inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)🚀 Starting sample Docker services in LXC $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-samples-start CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- bash -c "cd /root/docker-samples && docker-compose up -d"
+	@echo "$(GREEN)✅ Sample services started$(RESET)"
+	@echo "$(CYAN)🌐 Access Portainer: http://[container-ip]:9000$(RESET)"
+	@echo "$(CYAN)🌐 Access Nginx: http://[container-ip]:8080$(RESET)"
+
+docker-lxc-samples-stop: ## Stop sample Docker services inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)⏹️  Stopping sample Docker services in LXC $(CONTAINER_ID)...$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-samples-stop CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- bash -c "cd /root/docker-samples && docker-compose down"
+	@echo "$(GREEN)✅ Sample services stopped$(RESET)"
+
+docker-lxc-samples-logs: ## Show sample Docker services logs inside LXC (requires CONTAINER_ID=xxx)
+	@echo "$(BLUE)📋 Sample Docker services logs in LXC $(CONTAINER_ID):$(RESET)"
+	@if [ -z "$(CONTAINER_ID)" ]; then echo "$(RED)❌ Error: CONTAINER_ID is required. Usage: make docker-lxc-samples-logs CONTAINER_ID=200$(RESET)"; exit 1; fi
+	@pct exec $(CONTAINER_ID) -- bash -c "cd /root/docker-samples && docker-compose logs --tail=20"
 
 # New enhanced targets
 config-validate: ## Validate all configuration files
@@ -330,17 +454,75 @@ help-advanced: ## Show advanced usage examples
 	@echo "$(CYAN)$(BOLD)🚀 Advanced Usage Examples$(RESET)"
 	@echo ""
 	@echo "$(WHITE)Deployment Scenarios:$(RESET)"
-	@echo "  $(GREEN)make fresh-install$(RESET)     - Complete new setup"
-	@echo "  $(GREEN)make deploy-interactive$(RESET) - Guided deployment"
-	@echo "  $(GREEN)make config-validate$(RESET)    - Validate before deploy"
+	@echo "  $(GREEN)make fresh-install$(RESET)         - Complete new setup"
+	@echo "  $(GREEN)make deploy-interactive$(RESET)     - Guided deployment"
+	@echo "  $(GREEN)make config-validate$(RESET)        - Validate before deploy"
+	@echo ""
+	@echo "$(WHITE)VM/Container Deployments:$(RESET)"
+	@echo "  $(GREEN)make deploy-haos$(RESET)            - Deploy Home Assistant OS"
+	@echo "  $(GREEN)make deploy-omv$(RESET)             - Deploy OpenMediaVault NAS"
+	@echo "  $(GREEN)make deploy-docker-lxc$(RESET)      - Deploy Docker LXC container"
+	@echo "  $(GREEN)make deploy-docker-lxc-custom HOSTNAME=my-docker MEMORY=32768$(RESET)"
+	@echo "                                 - Deploy with custom settings"
+	@echo ""
+	@echo "$(WHITE)Docker LXC Management:$(RESET)"
+	@echo "  $(GREEN)make docker-lxc-status CONTAINER_ID=200$(RESET)     - Container status"
+	@echo "  $(GREEN)make docker-lxc-enter CONTAINER_ID=200$(RESET)      - Enter container"
+	@echo "  $(GREEN)make docker-lxc-ps CONTAINER_ID=200$(RESET)         - List Docker containers"
+	@echo "  $(GREEN)make docker-lxc-samples-start CONTAINER_ID=200$(RESET) - Start sample services"
 	@echo ""
 	@echo "$(WHITE)Maintenance Tasks:$(RESET)"
-	@echo "  $(GREEN)make upgrade$(RESET)           - System updates"
-	@echo "  $(GREEN)make monitor$(RESET)           - System monitoring"
-	@echo "  $(GREEN)make backup$(RESET)            - Configuration backup"
+	@echo "  $(GREEN)make upgrade$(RESET)               - System updates"
+	@echo "  $(GREEN)make monitor$(RESET)               - System monitoring"
+	@echo "  $(GREEN)make backup$(RESET)                - Configuration backup"
 	@echo ""
 	@echo "$(WHITE)Development & Testing:$(RESET)"
-	@echo "  $(GREEN)make dev-setup$(RESET)         - Development environment"
-	@echo "  $(GREEN)make full-test$(RESET)         - Comprehensive testing"
-	@echo "  $(GREEN)make performance-test$(RESET)  - Performance benchmarks"
+	@echo "  $(GREEN)make dev-setup$(RESET)             - Development environment"
+	@echo "  $(GREEN)make full-test$(RESET)             - Comprehensive testing"
+	@echo "  $(GREEN)make performance-test$(RESET)      - Performance benchmarks"
+	@echo ""
+
+help-docker-lxc: ## Show Docker LXC specific help and examples
+	@echo "$(CYAN)$(BOLD)🐳 Docker LXC Container Management$(RESET)"
+	@echo ""
+	@echo "$(WHITE)📦 Deployment Commands:$(RESET)"
+	@echo "  $(GREEN)make deploy-docker-lxc$(RESET)                    - Deploy with default settings (16GB RAM, 4 cores)"
+	@echo "  $(GREEN)make deploy-docker-lxc-check$(RESET)              - Dry-run deployment"
+	@echo "  $(GREEN)make deploy-docker-lxc-force$(RESET)              - Force deploy (overwrite existing)"
+	@echo ""
+	@echo "$(WHITE)🔧 Custom Deployment:$(RESET)"
+	@echo "  $(GREEN)make deploy-docker-lxc-custom HOSTNAME=docker-services MEMORY=32768 CPU_CORES=8$(RESET)"
+	@echo "  $(GREEN)make deploy-docker-lxc-custom IP=192.168.1.100/24 DISK_SIZE=200G$(RESET)"
+	@echo ""
+	@echo "$(WHITE)🎛️  Container Management:$(RESET)"
+	@echo "  $(GREEN)make docker-lxc-start CONTAINER_ID=200$(RESET)    - Start container"
+	@echo "  $(GREEN)make docker-lxc-stop CONTAINER_ID=200$(RESET)     - Stop container"
+	@echo "  $(GREEN)make docker-lxc-restart CONTAINER_ID=200$(RESET)  - Restart container"
+	@echo "  $(GREEN)make docker-lxc-status CONTAINER_ID=200$(RESET)   - Show status & Docker info"
+	@echo "  $(GREEN)make docker-lxc-enter CONTAINER_ID=200$(RESET)    - Enter container shell"
+	@echo "  $(GREEN)make docker-lxc-logs CONTAINER_ID=200$(RESET)     - Show container logs"
+	@echo ""
+	@echo "$(WHITE)🐳 Docker Management:$(RESET)"
+	@echo "  $(GREEN)make docker-lxc-ps CONTAINER_ID=200$(RESET)       - List Docker containers"
+	@echo "  $(GREEN)make docker-lxc-images CONTAINER_ID=200$(RESET)   - List Docker images"
+	@echo "  $(GREEN)make docker-lxc-volumes CONTAINER_ID=200$(RESET)  - List Docker volumes"
+	@echo "  $(GREEN)make docker-lxc-stats CONTAINER_ID=200$(RESET)    - Show container resource usage"
+	@echo "  $(GREEN)make docker-lxc-prune CONTAINER_ID=200$(RESET)    - Clean up Docker system"
+	@echo ""
+	@echo "$(WHITE)🚀 Sample Services:$(RESET)"
+	@echo "  $(GREEN)make docker-lxc-samples-start CONTAINER_ID=200$(RESET) - Start Portainer & Nginx samples"
+	@echo "  $(GREEN)make docker-lxc-samples-stop CONTAINER_ID=200$(RESET)  - Stop sample services"
+	@echo "  $(GREEN)make docker-lxc-samples-logs CONTAINER_ID=200$(RESET)  - Show sample service logs"
+	@echo ""
+	@echo "$(WHITE)💀 Destruction (BE CAREFUL!):$(RESET)"
+	@echo "  $(RED)make docker-lxc-destroy CONTAINER_ID=200 CONFIRM=yes$(RESET) - Permanently delete container"
+	@echo ""
+	@echo "$(YELLOW)📋 Example Workflow:$(RESET)"
+	@echo "  1. $(WHITE)make deploy-docker-lxc$(RESET)                  - Deploy container"
+	@echo "  2. $(WHITE)make docker-lxc-status CONTAINER_ID=200$(RESET) - Check it's running"
+	@echo "  3. $(WHITE)make docker-lxc-samples-start CONTAINER_ID=200$(RESET) - Start samples"
+	@echo "  4. $(WHITE)Open browser: http://[host-ip]:9000$(RESET)     - Access Portainer"
+	@echo "  5. $(WHITE)make docker-lxc-enter CONTAINER_ID=200$(RESET) - Enter for custom configs"
+	@echo ""
+	@echo "$(YELLOW)📖 Documentation: $(RESET)docs/DOCKER_LXC_DEPLOYMENT.md"
 	@echo ""

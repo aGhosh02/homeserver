@@ -1,0 +1,79 @@
+---
+- name: Build network configuration string
+  set_fact:
+    network_config: >-
+      name=eth0,bridge={{ container_network_bridge }},ip={{ container_network_ip }}
+      {%- if container_network_gateway != '' %},gw={{ container_network_gateway }}{% endif %}
+      {%- if docker_lxc_config.network.vlan_tag != '' %},tag={{ docker_lxc_config.network.vlan_tag }}{% endif %}
+      {%- if docker_lxc_config.network.mtu != '' %},mtu={{ docker_lxc_config.network.mtu }}{% endif %}
+
+- name: Build mount points configuration
+  set_fact:
+    mount_points_config: >-
+      {%- for mp in docker_lxc_config.mount_points -%}
+      --{{ mp.mp }} {{ mp.host_path }},mp={{ mp.container_path }}
+      {%- if not mp.backup | default(true) %},backup=0{% endif %}
+      {%- if not loop.last %} {% endif -%}
+      {%- endfor %}
+  when: docker_lxc_config.mount_points is defined and docker_lxc_config.mount_points | length > 0
+
+- name: Build features configuration
+  set_fact:
+    features_config: "{{ docker_lxc_config.features | join(',') }}"
+  when: docker_lxc_config.features is defined and docker_lxc_config.features | length > 0
+
+- name: Debug container creation parameters
+  debug:
+    msg: |
+      Container creation parameters:
+      - Container ID: {{ container_id }}
+      - OS Template: {{ docker_lxc_config.ostemplate }}
+      - Hostname: {{ container_hostname }}
+      - Cores: {{ container_cores }}
+      - Memory: {{ container_memory }}
+      - Swap: {{ container_swap }}
+      - Storage: {{ container_storage }}
+      - Disk Size: {{ container_disk_size }}
+      - Rootfs format: {{ container_storage }}:{{ container_disk_size | regex_replace('G$', '') }}
+      - Network config: {{ network_config }}
+      - Features config: {{ features_config | default('none') }}
+      - Mount points config: {{ mount_points_config | default('none') }}
+
+- name: Create Docker LXC container
+  shell: |
+    pct create {{ container_id }} local:vztmpl/{{ docker_lxc_config.ostemplate }} \
+      --hostname {{ container_hostname }} \
+      --cores {{ container_cores }} \
+      --memory {{ container_memory }} \
+      --swap {{ container_swap }} \
+      --rootfs {{ container_storage }}:{{ container_disk_size | regex_replace('G$', '') }} \
+      --net0 {{ network_config }} \
+      --ostype {{ docker_lxc_config.ostype }} \
+      {% if not docker_lxc_config.privileged %}--unprivileged 1{% endif %} \
+      {% if docker_lxc_config.onboot %}--onboot 1{% endif %} \
+      {% if features_config is defined %}--features {{ features_config }}{% endif %} \
+      {% if mount_points_config is defined %}{{ mount_points_config }}{% endif %}
+  register: container_creation
+  changed_when: container_creation.rc == 0
+  failed_when: container_creation.rc != 0
+
+- name: Display container creation result
+  debug:
+    msg: |
+      Docker LXC container created successfully:
+      - Container ID: {{ container_id }}
+      - Hostname: {{ container_hostname }}
+      - CPU Cores: {{ container_cores }}
+      - Memory: {{ container_memory }}MB
+      - Disk: {{ container_disk_size }}
+      - Storage: {{ container_storage }}
+      - Network: {{ network_config }}
+
+- name: Wait for container to be ready
+  pause:
+    seconds: 5
+
+- name: Set container configuration facts
+  set_fact:
+    docker_container_id: "{{ container_id }}"
+    docker_container_created: true

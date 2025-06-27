@@ -1,0 +1,16 @@
+---
+- name: restart docker
+  shell: "pct exec {{ container_id }} -- systemctl restart docker"
+  when: container_id is defined
+
+- name: stop docker container
+  shell: "pct stop {{ container_id }}"
+  when: container_id is defined
+
+- name: start docker container
+  shell: "pct start {{ container_id }}"
+  when: container_id is defined
+
+- name: reboot docker container
+  shell: "pct reboot {{ container_id }}"
+  when: container_id is defined

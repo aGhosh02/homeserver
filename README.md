@@ -29,6 +29,7 @@ This repository provides a complete infrastructure-as-code solution for automate
 ### 🏠 **VM Deployment**
 - **Home Assistant OS**: Automated HAOS VM deployment with optimized configuration
 - **OpenMediaVault**: NAS VM deployment with disk passthrough and SATA controller
+- **Docker LXC**: Privileged container platform for hosting multiple Docker services
 - **Resource Management**: Intelligent resource allocation and optimization
 - **Template Support**: Extensible VM deployment templates
 
@@ -182,6 +183,14 @@ homeserver/
 - Memory balloon disabled for stable NAS performance
 - ISO download and VM installation automation
 
+### **docker_lxc** - Container Platform Deployment
+- Privileged LXC container with Docker and Docker Compose
+- 4 CPU cores, 16GB RAM with dynamic ballooning
+- 100GB+ thin-provisioned storage with bind mounts
+- Host directory mounting for data persistence
+- Pre-configured sample services (Portainer, Nginx)
+- Comprehensive container management tools
+
 ## 🔐 Security Features
 
 ### **Credential Management**
@@ -209,6 +218,10 @@ homeserver/
 
 # GPU passthrough diagnostics  
 ./scripts/gpu-passthrough-manager.sh check
+
+# Docker LXC container management
+./scripts/docker-lxc.sh deploy --hostname docker-services
+./scripts/docker-lxc.sh status --container-id 200
 
 # Comprehensive validation
 make validate
