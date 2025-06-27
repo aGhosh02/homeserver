@@ -13,7 +13,7 @@
   register: bridge_ip_check
   changed_when: false
   failed_when: false
-  when: bridge_check.rc == 0
+  when: bridge_check is defined and bridge_check.rc is defined and bridge_check.rc == 0
   tags: ['validate-ip']
 
 - name: Check NAT rules
@@ -35,9 +35,10 @@
 - name: Display network validation results
   debug:
     msg: |
-      Network Validation Results:
-      Bridge Interface: {{ 'OK' if bridge_check.rc == 0 else 'FAILED' }}
-      Bridge IP: {{ 'OK' if bridge_ip_check.rc == 0 else 'FAILED' }}
-      NAT Rules: {{ 'OK' if nat_rules_check.rc == 0 else 'FAILED' }}
-      Forward Rules: {{ 'OK' if forward_rules_check.rc == 0 else 'FAILED' }}
+      🌐 Network Validation Results:
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      🔗 Bridge Interface: {{ 'OK' if (bridge_check is defined and bridge_check.rc is defined and bridge_check.rc == 0) else ('FAILED' if (bridge_check is defined and bridge_check.rc is defined) else 'SKIPPED') }}
+      📍 Bridge IP: {{ 'OK' if (bridge_ip_check is defined and bridge_ip_check.rc is defined and bridge_ip_check.rc == 0) else ('FAILED' if (bridge_ip_check is defined and bridge_ip_check.rc is defined) else 'SKIPPED') }}
+      🔄 NAT Rules: {{ 'OK' if (nat_rules_check is defined and nat_rules_check.rc is defined and nat_rules_check.rc == 0) else ('FAILED' if (nat_rules_check is defined and nat_rules_check.rc is defined) else 'SKIPPED') }}
+      ⏩ Forward Rules: {{ 'OK' if (forward_rules_check is defined and forward_rules_check.rc is defined and forward_rules_check.rc == 0) else ('FAILED' if (forward_rules_check is defined and forward_rules_check.rc is defined) else 'SKIPPED') }}
   tags: ['validation-results']

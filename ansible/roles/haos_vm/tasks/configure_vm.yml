@@ -1,0 +1,94 @@
+---
+# VM Configuration tasks
+
+- name: Generate VM description
+  set_fact:
+    vm_description: |
+      <div align='center'>
+        <a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'>
+          <img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo' style='width:81px;height:112px;'/>
+        </a>
+
+        <h2 style='font-size: 24px; margin: 20px 0;'>Home Assistant OS VM</h2>
+
+        <p style='margin: 16px 0;'>
+          <a href='https://ko-fi.com/community_scripts' target='_blank' rel='noopener noreferrer'>
+            <img src='https://img.shields.io/badge/&#x2615;-Buy us a coffee-blue' alt='Support Coffee' />
+          </a>
+        </p>
+
+        <span style='margin: 0 10px;'>
+          <i class="fa fa-github fa-fw" style="color: #f5f5f5;"></i>
+          <a href='https://github.com/community-scripts/ProxmoxVE' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>GitHub</a>
+        </span>
+        <span style='margin: 0 10px;'>
+          <i class="fa fa-comments fa-fw" style="color: #f5f5f5;"></i>
+          <a href='https://github.com/community-scripts/ProxmoxVE/discussions' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Discussions</a>
+        </span>
+        <span style='margin: 0 10px;'>
+          <i class="fa fa-exclamation-circle fa-fw" style="color: #f5f5f5;"></i>
+          <a href='https://github.com/community-scripts/ProxmoxVE/issues' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Issues</a>
+        </span>
+        
+        <div style='margin-top: 20px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;'>
+          <h3>VM Configuration</h3>
+          <p><strong>Version:</strong> {{ haos_version }}</p>
+          <p><strong>Created:</strong> {{ ansible_date_time.iso8601 }}</p>
+          <p><strong>CPU Cores:</strong> {{ haos_vm.cpu.cores | default(2) }}</p>
+          <p><strong>Memory:</strong> {{ haos_vm.memory | default(4096) }}MB</p>
+          <p><strong>Disk Size:</strong> {{ haos_vm.disk_size | default('32G') }}</p>
+        </div>
+      </div>
+
+- name: Prepare VM description for shell command
+  set_fact:
+    vm_description_clean: "{{ vm_description | replace('\n', ' ') | replace('\"', '\\\"') }}"
+
+- name: Set VM description
+  shell: >-
+    qm set {{ haos_vm_id }} -description "{{ vm_description_clean }}"
+  register: description_result
+  failed_when: description_result.rc != 0
+
+- name: Resize disk to specified size
+  shell: qm resize {{ haos_vm_id }} scsi0 {{ haos_vm.disk_size | default('32G') }}
+  register: resize_result
+  failed_when: resize_result.rc != 0
+
+- name: Start VM if configured
+  shell: |
+    if qm status {{ haos_vm_id }} | grep -q "status: running"; then
+      echo "VM {{ haos_vm_id }} is already running"
+    else
+      qm start {{ haos_vm_id }}
+      echo "Started VM {{ haos_vm_id }}"
+    fi
+  register: start_result
+  changed_when: "'Started VM' in start_result.stdout"
+  when: haos_vm.start_after_creation | default(true)
+
+- name: Display final configuration
+  debug:
+    msg: |
+      🎉 Home Assistant OS VM configuration completed successfully!
+      
+      VM Details:
+      🆔 VM ID: {{ haos_vm_id }}
+      🏠 Hostname: {{ haos_vm.hostname | default('haos') }}
+      📦 Version: {{ haos_version }}
+      🧠 CPU: {{ haos_vm.cpu.cores | default(2) }} cores ({{ haos_vm.cpu.type | default('host') }})
+      🛠️ Memory: {{ haos_vm.memory | default(4096) }}MB
+      💾 Disk: {{ haos_vm.disk_size | default('32G') }}
+      🌉 Network: {{ haos_vm.network.bridge | default('vmbr0') }}
+      🔗 MAC: {{ haos_mac_address }}
+      🚀 Started: {{ haos_vm.start_after_creation | default(true) | ternary('Yes', 'No') }}
+      
+      {% if haos_vm.start_after_creation | default(true) %}
+      🌐 Access Home Assistant at: http://{{ haos_vm.hostname | default('haos') }}.local:8123
+      {% endif %}
+
+- name: Wait for VM to be ready (if started)
+  pause:
+    seconds: 10
+    prompt: "Waiting for VM to initialize..."
+  when: haos_vm.start_after_creation | default(true)

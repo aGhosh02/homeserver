@@ -1,0 +1,33 @@
+---
+# Home Assistant OS VM Configuration for Proxmox Group
+# Single base configuration with stable build and 2GB RAM
+
+# Default configuration
+haos_vm:
+  hostname: "homeassistant"
+  disk_size: "32G"
+  cpu:
+    type: "host"
+    cores: 2
+  memory: 2048  # 2GB RAM
+  network:
+    bridge: "vmbr0"
+  storage:
+    cache: "writethrough"
+  version: "stable"
+  start_after_creation: true
+  agent_enabled: true
+  onboot: true
+
+# Validation settings
+haos_validation:
+  check_proxmox_version: true
+  min_proxmox_version: "8.1"
+  check_architecture: true
+  required_architecture: "amd64"
+  check_storage: true
+
+# Download settings
+haos_download:
+  temp_dir: "/tmp/haos-ansible"
+  timeout: 600  # Increase timeout for slower connections

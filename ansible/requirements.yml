@@ -1,23 +1,32 @@
 ---
 # Requirements for Ansible collections and roles
+# Pin versions for reproducible deployments
+
 collections:
   - name: ansible.posix
-    version: ">=1.5.0"
+    version: ">=1.5.0,<2.0.0"
     source: https://galaxy.ansible.com
   - name: community.general
-    version: ">=7.0.0"
+    version: ">=7.0.0,<8.0.0"
     source: https://galaxy.ansible.com
   - name: community.crypto
-    version: ">=2.0.0"
+    version: ">=2.0.0,<3.0.0"
     source: https://galaxy.ansible.com
   - name: ansible.utils
-    version: ">=2.0.0"
+    version: ">=2.0.0,<3.0.0"
+    source: https://galaxy.ansible.com
+  - name: community.docker
+    version: ">=3.0.0,<4.0.0"
+    source: https://galaxy.ansible.com
+  - name: community.libvirt
+    version: ">=1.0.0,<2.0.0"
     source: https://galaxy.ansible.com
 
-# External roles from Ansible Galaxy (if any)
-roles: []
-  # Uncomment if you want to use external roles
-  # - name: geerlingguy.security
-  #   version: "2.0.1"
-  # - name: geerlingguy.firewall
-  #   version: "2.3.0"
+# External roles from Ansible Galaxy
+roles:
+  - name: geerlingguy.security
+    version: "2.0.1"
+    src: https://github.com/geerlingguy/ansible-role-security
+  - name: geerlingguy.firewall
+    version: "2.3.0"
+    src: https://github.com/geerlingguy/ansible-role-firewall

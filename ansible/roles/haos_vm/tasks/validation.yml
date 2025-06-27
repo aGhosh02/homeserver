@@ -1,0 +1,63 @@
+---
+# Validation tasks for Home Assistant OS VM deployment
+
+- name: Check if running as root
+  fail:
+    msg: "This playbook must be run as root or with become: true"
+  when: ansible_user_id != "root" and not ansible_become
+  tags: ['validation']
+
+- name: Check Proxmox VE version
+  shell: pveversion | grep -E "pve-manager/[0-9]+\.[0-9]+"
+  register: pve_version_output
+  changed_when: false
+  failed_when: false
+  tags: ['validation']
+
+- name: Validate Proxmox VE version
+  fail:
+    msg: |
+      This version of Proxmox Virtual Environment is not supported.
+      Requires Proxmox Virtual Environment Version {{ haos_validation.min_proxmox_version }} or later.
+      Found: {{ pve_version_output.stdout }}
+  when: 
+    - haos_validation.check_proxmox_version | default(true)
+    - pve_version_output.rc == 0
+    - not (pve_version_output.stdout | regex_search('pve-manager/([8-9]\.[1-9]|[9-9]\.[0-9])'))
+  tags: ['validation']
+
+- name: Check system architecture
+  fail:
+    msg: |
+      This script will not work with non-AMD64 architectures.
+      Current architecture: {{ ansible_architecture }}
+      Required architecture: {{ haos_validation.required_architecture }}
+  when:
+    - haos_validation.check_architecture | default(true)
+    - ansible_architecture != "x86_64"
+  tags: ['validation']
+
+- name: Check for available storage
+  shell: pvesm status -content images | awk 'NR>1'
+  register: available_storage
+  changed_when: false
+  failed_when: available_storage.stdout == ""
+  tags: ['validation']
+
+- name: Validate storage availability
+  fail:
+    msg: "Unable to detect a valid storage location for VM images"
+  when:
+    - haos_validation.check_storage | default(true)
+    - available_storage.stdout == ""
+  tags: ['validation']
+
+- name: Display validation success
+  debug:
+    msg: |
+      ✅ All validation checks passed:
+      - Running as root/with privileges
+      - Proxmox VE version is compatible
+      - Architecture is supported ({{ ansible_architecture }})
+      - Storage is available for VM images
+  tags: ['validation']

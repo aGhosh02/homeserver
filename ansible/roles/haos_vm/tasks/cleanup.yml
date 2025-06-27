@@ -1,0 +1,14 @@
+---
+# Cleanup tasks
+
+- name: Remove temporary directory
+  file:
+    path: "{{ haos_temp_dir }}"
+    state: absent
+  when: haos_temp_dir is defined
+
+- name: Display cleanup completion
+  debug:
+    msg: |
+      🧹 Cleanup completed successfully
+      📂 Temporary files removed: {{ haos_temp_dir | default('none') }}

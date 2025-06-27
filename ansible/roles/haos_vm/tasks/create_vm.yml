@@ -1,0 +1,102 @@
+---
+# VM Creation tasks
+
+- name: Set network configuration variables
+  set_fact:
+    vm_bridge: "{{ haos_vm.network.bridge | default('vmbr0') }}"
+    vm_vlan_tag: "{{ haos_vm.network.vlan_tag | default('') }}"
+    vm_mtu: "{{ haos_vm.network.mtu | default('') }}"
+
+- name: Build network string
+  set_fact:
+    vm_network_string: "virtio,bridge={{ vm_bridge }},macaddr={{ haos_mac_address }}{{ ',tag=' + vm_vlan_tag if vm_vlan_tag else '' }}{{ ',mtu=' + vm_mtu if vm_mtu else '' }}"
+
+- name: Debug VM creation variables
+  debug:
+    msg: |
+      VM Creation Debug:
+      - VM ID: {{ haos_vm_id }}
+      - MAC Address: {{ haos_mac_address }}
+      - Network String: {{ vm_network_string }}
+      - Hostname: {{ haos_vm.hostname | default('haos') }}
+
+- name: Validate required variables before VM creation
+  fail:
+    msg: "Required variable {{ item.name }} is not set or empty"
+  when: item.value is undefined or item.value == ""
+  loop:
+    - { name: "haos_vm_id", value: "{{ haos_vm_id | default('') }}" }
+    - { name: "haos_mac_address", value: "{{ haos_mac_address | default('') }}" }
+
+- name: Create Home Assistant OS VM
+  shell: |
+    qm create {{ haos_vm_id }} \
+      -agent {{ haos_vm.agent_enabled | default(true) | ternary('1', '0') }} \
+      -tablet {{ haos_vm.tablet | default(false) | ternary('1', '0') }} \
+      -localtime {{ haos_vm.localtime | default(true) | ternary('1', '0') }} \
+      -bios {{ haos_vm.bios | default('ovmf') }} \
+      -cpu {{ haos_vm.cpu.type | default('host') }} \
+      -cores {{ haos_vm.cpu.cores | default(2) }} \
+      -memory {{ haos_vm.memory | default(4096) }} \
+      -name {{ haos_vm.hostname | default('haos') }} \
+      -tags community-script \
+      -net0 {{ vm_network_string }} \
+      -onboot {{ haos_vm.onboot | default(true) | ternary('1', '0') }} \
+      -ostype {{ haos_vm.ostype | default('l26') }} \
+      -scsihw {{ haos_vm.scsihw | default('virtio-scsi-pci') }}
+  register: vm_create_result
+  failed_when: vm_create_result.rc != 0
+
+- name: Validate storage and disk variables before EFI allocation
+  fail:
+    msg: "Required variable {{ item.name }} is not set or empty"
+  when: item.value is undefined or item.value == ""
+  loop:
+    - { name: "haos_storage_location", value: "{{ haos_storage_location | default('') }}" }
+    - { name: "haos_disk0", value: "{{ haos_disk0 | default('') }}" }
+
+- name: Allocate EFI disk
+  shell: pvesm alloc {{ haos_storage_location }} {{ haos_vm_id }} {{ haos_disk0 }} 4M
+  register: efi_alloc_result
+  failed_when: efi_alloc_result.rc != 0
+
+- name: Debug EFI disk allocation variables
+  debug:
+    msg: |
+      EFI Disk Allocation Debug:
+      - Storage Location: {{ haos_storage_location | default('undefined') }}
+      - VM ID: {{ haos_vm_id | default('undefined') }}
+      - Disk0 Name: {{ haos_disk0 | default('undefined') }}
+      - Command: pvesm alloc {{ haos_storage_location }} {{ haos_vm_id }} {{ haos_disk0 }} 4M
+
+- name: Import disk image
+  shell: |
+    qm importdisk {{ haos_vm_id }} {{ haos_temp_dir }}/{{ haos_extracted_filename }} {{ haos_storage_location }} {{ haos_disk_config.import_format }}
+  register: import_result
+  failed_when: import_result.rc != 0
+
+- name: Set storage configuration variables
+  set_fact:
+    vm_storage_cache: "{{ haos_vm.storage.cache | default('writethrough') }}"
+    vm_disk_size: "{{ haos_vm.disk_size | default('32G') }}"
+
+- name: Build storage cache string
+  set_fact:
+    vm_cache_string: "{{ 'cache=' + vm_storage_cache + ',' if vm_storage_cache else '' }}"
+
+- name: Configure VM disks and boot order
+  shell: |
+    qm set {{ haos_vm_id }} \
+      -efidisk0 {{ haos_disk0_ref }}{{ haos_disk_config.efi_format }} \
+      -scsi0 {{ haos_disk1_ref }},{{ vm_cache_string }}{{ haos_disk_config.thin }}size={{ vm_disk_size }} \
+      -boot order=scsi0
+  register: disk_config_result
+  failed_when: disk_config_result.rc != 0
+
+- name: Display VM creation success
+  debug:
+    msg: |
+      ✅ Successfully created Home Assistant OS VM
+      🆔 VM ID: {{ haos_vm_id }}
+      🏠 Hostname: {{ haos_vm.hostname }}
+      💿 Disks configured and ready

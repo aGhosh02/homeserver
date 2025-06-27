@@ -1,0 +1,106 @@
+---
+- name: Deploy Home Assistant OS VM on Proxmox
+  hosts: proxmox
+  become: true
+  gather_facts: true
+  vars:
+    # Home Assistant OS VM Configuration
+    # Single base configuration with stable build and 2GB RAM
+    haos_vm:
+      # VM Basic Configuration
+      hostname: "homeassistant"
+      disk_size: "32G"
+      
+      # Hardware Configuration
+      cpu:
+        type: "host"
+        cores: 2
+      memory: 2048  # MB
+      
+      # Network Configuration
+      network:
+        bridge: "vmbr0"
+        # mac_address: ""  # Auto-generated if not specified
+        vlan_tag: ""
+        mtu: ""
+      
+      # Storage Configuration
+      storage:
+        location: ""  # Auto-detected if not specified
+        cache: "writethrough"
+        thin_provisioning: true
+      
+      # VM Behavior
+      start_after_creation: true
+      agent_enabled: true
+      onboot: true
+      tablet: false
+      localtime: true
+      bios: "ovmf"
+      ostype: "l26"
+      scsihw: "virtio-scsi-pci"
+      
+      # Home Assistant OS Version
+      version: "stable"
+
+  pre_tasks:
+    - name: Display playbook start information
+      debug:
+        msg: |
+          🏠 Starting Home Assistant OS VM Deployment
+          🎯 Target Host: {{ inventory_hostname }}
+          📅 Started: {{ ansible_date_time.iso8601 }}
+          
+          This playbook will:
+          ✅ Validate system requirements
+          ✅ Generate VM ID and MAC address
+          ✅ Detect optimal storage location
+          ✅ Download Home Assistant OS image
+          ✅ Create and configure VM
+          ✅ Start VM (if configured)
+          ✅ Clean up temporary files
+
+    - name: Wait for system to be ready
+      wait_for_connection:
+        timeout: 60
+        delay: 5
+
+  roles:
+    - role: haos_vm
+      tags: ['haos', 'vm-deployment']
+
+  post_tasks:
+    - name: Display deployment summary
+      debug:
+        msg: |
+          🎉 Home Assistant OS VM Deployment Completed Successfully!
+          
+          📋 Summary:
+          🆔 VM ID: {{ haos_vm_id | default('N/A') }}
+          🏠 Hostname: {{ haos_vm.hostname }}
+          🖥️ Host: {{ inventory_hostname }}
+          📦 HA OS Version: {{ haos_version | default('N/A') }}
+          🚀 VM Started: {{ haos_vm.start_after_creation | ternary('Yes', 'No') }}
+          
+          {% if haos_vm.start_after_creation | default(true) %}
+          🌐 Next Steps:
+          1. Wait 2-3 minutes for Home Assistant to fully boot
+          2. Access the web interface at: http://{{ haos_vm.hostname }}.local:8123
+          3. Complete the Home Assistant onboarding process
+          
+          💡 If you can't access via hostname, check the VM's IP address in Proxmox
+          {% else %}
+          🌐 Next Steps:
+          1. Start the VM manually: qm start {{ haos_vm_id | default('VM_ID') }}
+          2. Wait 2-3 minutes for Home Assistant to boot
+          3. Access the web interface at: http://VM_IP:8123
+          {% endif %}
+          
+          📚 Documentation:
+          - Home Assistant: https://www.home-assistant.io/getting-started/
+          - Proxmox VE: https://pve.proxmox.com/wiki/Main_Page
+
+  handlers:
+    - name: Display completion message
+      debug:
+        msg: "Home Assistant OS VM deployment workflow completed!"

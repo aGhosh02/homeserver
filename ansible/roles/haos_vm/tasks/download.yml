@@ -1,0 +1,85 @@
+---
+# Home Assistant OS download tasks
+
+- name: Create temporary directory for downloads
+  tempfile:
+    state: directory
+    suffix: haos
+  register: temp_dir
+
+- name: Set temporary directory fact
+  set_fact:
+    haos_temp_dir: "{{ temp_dir.path }}"
+
+- name: Get Home Assistant OS version information
+  uri:
+    url: "https://raw.githubusercontent.com/home-assistant/version/master/stable.json"
+    method: GET
+    return_content: yes
+  register: haos_version_info
+
+- name: Extract stable version from JSON
+  set_fact:
+    haos_stable_version: "{{ (haos_version_info.content | from_json).hassos.ova }}"
+
+- name: Set version for download
+  set_fact:
+    haos_version: >-
+      {%- if haos_vm.version == 'dev' -%}
+      dev
+      {%- else -%}
+      {{ haos_stable_version }}
+      {%- endif -%}
+
+- name: Set download URL based on version
+  set_fact:
+    haos_download_url: >-
+      {%- if haos_vm.version == 'dev' -%}
+      https://os-artifacts.home-assistant.io/{{ haos_version }}/haos_ova-{{ haos_version }}.qcow2.xz
+      {%- else -%}
+      https://github.com/home-assistant/operating-system/releases/download/{{ haos_version }}/haos_ova-{{ haos_version }}.qcow2.xz
+      {%- endif -%}
+
+- name: Set download filename
+  set_fact:
+    haos_filename: "haos_ova-{{ haos_version }}.qcow2.xz"
+    haos_extracted_filename: "haos_ova-{{ haos_version }}.qcow2"
+
+- name: Display download information
+  debug:
+    msg: |
+      📥 Downloading Home Assistant OS {{ haos_vm.version }} version
+      🔗 URL: {{ haos_download_url }}
+      📁 Filename: {{ haos_filename }}
+
+- name: Download Home Assistant OS image
+  get_url:
+    url: "{{ haos_download_url }}"
+    dest: "{{ haos_temp_dir }}/{{ haos_filename }}"
+    timeout: "{{ haos_download.timeout | default(300) }}"
+    mode: '0644'
+  register: download_result
+
+- name: Extract qcow2 image from xz archive
+  shell: |
+    cd {{ haos_temp_dir }}
+    unxz {{ haos_filename }}
+  args:
+    creates: "{{ haos_temp_dir }}/{{ haos_extracted_filename }}"
+
+- name: Verify extracted image exists
+  stat:
+    path: "{{ haos_temp_dir }}/{{ haos_extracted_filename }}"
+  register: extracted_image
+
+- name: Fail if extraction unsuccessful
+  fail:
+    msg: "Failed to extract Home Assistant OS image"
+  when: not extracted_image.stat.exists
+
+- name: Display download completion
+  debug:
+    msg: |
+      ✅ Successfully downloaded and extracted Home Assistant OS image
+      📁 Location: {{ haos_temp_dir }}/{{ haos_extracted_filename }}
+      📏 Size: {{ extracted_image.stat.size | human_readable }}

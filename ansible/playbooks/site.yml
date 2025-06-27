@@ -1,5 +1,5 @@
 ---
-- name: Proxmox VE Complete Setup
+- name: Proxmox VE Complete Setup and Configuration
   hosts: proxmox
   become: true
   gather_facts: true
@@ -7,20 +7,38 @@
   strategy: linear
   max_fail_percentage: 0
   vars:
+    # Deployment configuration
+    deployment_start_time: "{{ ansible_date_time.iso8601 }}"
+    deployment_log_file: "{{ log_file | default('/var/log/ansible-deployment/deployment-' + ansible_date_time.date + '.log') }}"
+    
     # Override role defaults if needed
     system_update_on_setup: true
     validate_configuration: true
+    enable_monitoring: "{{ monitoring.enabled | default(true) }}"
 
   pre_tasks:
-    - name: Wait for system to be ready
+    - name: Wait for system to become reachable
       wait_for_connection:
         timeout: 300
-        delay: 5
+        delay: 10
+        connect_timeout: 10
+        sleep: 5
       tags: ['always']
 
-    - name: Set deployment timestamp
+    - name: Set deployment facts
       set_fact:
         deployment_start_time: "{{ ansible_date_time.iso8601 }}"
+        deployment_id: "{{ ansible_date_time.epoch }}"
+        deployment_user: "{{ ansible_user_id | default('ansible') }}"
+      tags: ['always']
+
+    - name: Create deployment logging directory
+      file:
+        path: /var/log/ansible-deployment
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
       tags: ['always']
 
     - name: Gather comprehensive system facts
@@ -29,34 +47,85 @@
           - '!facter'
           - '!ohai'
           - 'all'
+        gather_timeout: 30
       tags: ['always']
 
-    - name: Create deployment log directory
-      file:
-        path: /var/log/ansible-deployment
-        state: directory
-        mode: '0755'
-      tags: ['always']
-
-    - name: Display setup information
+    - name: Display deployment information
       debug:
         msg: |
-          🚀 Starting Proxmox VE setup for: {{ inventory_hostname }}
-          📍 IP Address: {{ ansible_host }}
-          🖥️  OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
-          🔧 Kernel: {{ ansible_kernel }}
-          🏗️  Architecture: {{ ansible_architecture }}
-          💾 Memory: {{ ansible_memtotal_mb }}MB
-          💽 Storage: {{ ansible_devices | length }} devices detected
-          ⏰ Started: {{ deployment_start_time }}
-      tags: ['info']
+          🚀 Starting Proxmox VE deployment
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          📋 Deployment Details:
+          • Target Host: {{ inventory_hostname }}
+          • IP Address: {{ ansible_host }}
+          • Deployment ID: {{ deployment_id }}
+          • Start Time: {{ deployment_start_time }}
+          • User: {{ deployment_user }}
+          
+          � System Information:
+          • OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          • Kernel: {{ ansible_kernel }}
+          • Architecture: {{ ansible_architecture }}
+          • CPU: {{ ansible_processor_vcpus }} cores
+          • Memory: {{ (ansible_memtotal_mb / 1024) | round(1) }}GB
+          • Storage: {{ ansible_devices | length }} block devices detected
+          
+          🔧 Configuration:
+          • System Updates: {{ system_update_on_setup }}
+          • Validation: {{ validate_configuration }}
+          • Monitoring: {{ enable_monitoring }}
+      tags: ['always']
+
+    - name: Log deployment start
+      lineinfile:
+        path: "{{ deployment_log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - Deployment {{ deployment_id }} started by {{ deployment_user }} on {{ inventory_hostname }}"
+        create: yes
+        mode: '0644'
+      tags: ['always']
 
   roles:
     - role: proxmox_base
       tags: ['base', 'system', 'essential']
       vars:
-        # Override specific system_config values without replacing the entire dict
-        _system_update_override: "{{ system_update_on_setup }}"
+        # Override specific system config values
+        system_config:
+          update_packages: true
+          install_essential_packages: true
+          remove_enterprise_repos: true
+          disable_subscription_nag: true
+          install_pve_kernel: true
+          disable_ha_services: true
+          essential_packages:
+            - curl
+            - wget
+            - vim
+            - htop
+            - iotop
+            - tmux
+            - git
+            - rsync
+            - unzip
+            - dnsutils
+            - net-tools
+            - pciutils
+            - lshw
+            - chrony
+            - bridge-utils
+            - iptables-persistent
+            - netfilter-persistent
+            - proxmox-ve
+            - pve-headers
+            - open-iscsi
+            - qemu-guest-agent
+            - spice-vdagent
+            - ifenslave
+            - smartmontools
+            - lm-sensors
+            - ethtool
+            - rsync
+            - rclone
+            - borgbackup
     
     - role: vm_networking
       tags: ['networking', 'vm', 'network']

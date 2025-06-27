@@ -1,10 +1,289 @@
-# Proxmox Homeserver Ansible Setup
+# 🏠 Proxmox Homeserver Automation
 
-![Ansible Lint](https://github.com/actions/workflow_run?workflow=ansible-lint)
+[![Ansible Lint](https://github.com/actions/workflow_run?workflow=ansible-lint)](https://github.com/actions/workflows/ansible-lint.yml)
 [![Made with Ansible](https://img.shields.io/badge/Made%20with-Ansible-red.svg)](https://www.ansible.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](CHANGELOG.md)
 
-This repository contains a set of Ansible playbooks and roles to automate the setup and configuration of a Proxmox VE homeserver. It is designed to be idempotent and modular, allowing you to easily manage your Proxmox environment from a central location.
+> **A comprehensive, production-ready Ansible automation suite for Proxmox VE homeserver deployment and management.**
+
+This repository provides a complete infrastructure-as-code solution for automated Proxmox VE homeserver setup, featuring advanced configuration management, security hardening, GPU passthrough automation, and VM deployment capabilities.
+
+## 🌟 Key Features
+
+### 🔧 **Core Automation**
+- **Automated Proxmox VE Configuration**: Complete base system setup with security hardening
+- **Intelligent Package Management**: Repository configuration and essential package installation
+- **System Optimization**: Kernel tuning and performance optimizations for virtualization workloads
+
+### 🌐 **Advanced Networking**
+- **Dedicated VM Network**: Isolated bridge network (vmbr1) with NAT configuration
+- **Firewall Integration**: Automated iptables rules for secure VM internet access
+- **Network Segmentation**: Proper isolation between management and VM networks
+
+### 🎮 **GPU Passthrough Automation**
+- **IOMMU Configuration**: Automated kernel parameter setup for Intel/AMD systems
+- **VFIO Driver Management**: Automated GPU binding and driver blacklisting
+- **Validation Tools**: Comprehensive GPU passthrough verification scripts
+
+### 🏠 **VM Deployment**
+- **Home Assistant OS**: Automated HAOS VM deployment with optimized configuration
+- **Resource Management**: Intelligent resource allocation and optimization
+- **Template Support**: Extensible VM deployment templates
+
+### 🔒 **Security & Management**
+- **Ansible Vault Integration**: Secure credential and sensitive data management
+- **Comprehensive Logging**: Detailed audit trails and deployment logging
+- **Health Monitoring**: Built-in system health checks and diagnostics
+- **Backup Automation**: Configuration backup and disaster recovery tools
+
+## 📋 System Requirements
+
+### Control Machine (Ansible Host)
+| Component | Requirement | Recommended |
+|-----------|-------------|-------------|
+| **OS** | Linux, macOS, WSL2 | Ubuntu 22.04+ |
+| **Python** | 3.8+ | 3.10+ |
+| **Ansible** | 2.12+ | Latest stable |
+| **Memory** | 2GB RAM | 4GB RAM |
+| **Storage** | 1GB free | 5GB free |
+
+### Target Machine (Proxmox Host)
+| Component | Requirement | Recommended |
+|-----------|-------------|-------------|
+| **OS** | Proxmox VE 7.x/8.x | Proxmox VE 8.x |
+| **CPU** | VT-x/VT-d or AMD-V/AMD-Vi | Modern multi-core |
+| **Memory** | 8GB RAM | 32GB+ RAM |
+| **Storage** | 100GB | 500GB+ SSD |
+| **Network** | Static IP, SSH access | Gigabit Ethernet |
+
+## 🚀 Quick Start
+
+### 1. **Prerequisites Check**
+```bash
+# Verify dependencies
+make check-deps
+```
+
+### 2. **Project Setup**
+```bash
+# Clone repository
+git clone https://github.com/your-repo/homeserver.git
+cd homeserver
+
+# Install dependencies
+make setup
+```
+
+### 3. **Configuration**
+```bash
+# Configure target hosts
+vim ansible/inventories/production/hosts.yml
+
+# Set up secrets (optional but recommended)
+make edit-vault
+```
+
+### 4. **Deployment**
+```bash
+# Test connectivity
+make validate
+
+# Deploy (dry-run first)
+make dry-run
+make run
+```
+
+## 🛠️ Advanced Usage
+
+### **Selective Deployment**
+```bash
+make run-base      # Base system configuration only
+make run-network   # Network setup only  
+make run-gpu       # GPU passthrough only
+make deploy-haos   # Home Assistant OS deployment
+```
+
+### **Maintenance Operations**
+```bash
+make maintenance   # System updates and maintenance
+make validate      # System validation and health checks
+make backup        # Create configuration backup
+make clean         # Clean temporary files
+```
+
+### **Development & Testing**
+```bash
+make test          # Run comprehensive tests
+make lint          # Code quality checks
+make syntax-check  # Playbook syntax validation
+make security-check # Security auditing
+```
+
+## 📂 Project Architecture
+
+```
+homeserver/
+├── 📁 ansible/                 # Main Ansible directory
+│   ├── 📄 ansible.cfg          # Ansible configuration
+│   ├── 📄 requirements.yml     # Dependencies specification
+│   ├── 📁 inventories/         # Host and group configurations
+│   │   └── 📁 production/      # Production environment
+│   ├── 📁 playbooks/           # Main orchestration playbooks
+│   │   ├── 📄 site.yml         # Primary deployment playbook
+│   │   ├── 📄 maintenance.yml  # System maintenance tasks
+│   │   ├── 📄 validate.yml     # Validation and testing
+│   │   └── 📄 deploy-haos.yml  # Home Assistant OS deployment
+│   └── 📁 roles/               # Modular configuration roles
+│       ├── 📁 proxmox_base/    # Base system configuration
+│       ├── 📁 vm_networking/   # Network bridge setup
+│       ├── 📁 gpu_passthrough/ # GPU passthrough automation
+│       ├── 📁 haos_vm/         # Home Assistant OS deployment
+│       └── 📁 common/          # Shared validation tasks
+├── 📁 docs/                    # Comprehensive documentation
+├── 📁 scripts/                 # Utility and management scripts
+├── 📄 Makefile                 # Task automation and shortcuts
+└── 📄 README.md               # This file
+```
+
+## 🧩 Role Overview
+
+### **proxmox_base** - Foundation Configuration
+- System package management and repository setup
+- Security hardening and system optimization
+- NTP synchronization and logging configuration
+- Performance tuning for virtualization workloads
+
+### **vm_networking** - Network Infrastructure  
+- VM bridge interface creation and configuration
+- NAT setup for VM internet connectivity
+- Firewall rules and network security policies
+- Network isolation and segmentation
+
+### **gpu_passthrough** - Hardware Passthrough
+- IOMMU enablement and kernel configuration
+- GPU driver management and VFIO binding
+- Hardware validation and compatibility checks
+- Automated troubleshooting and diagnostics
+
+### **haos_vm** - VM Deployment
+- Home Assistant OS VM creation and configuration
+- Resource allocation and storage management
+- Network attachment and boot configuration
+- VM lifecycle management
+
+## 🔐 Security Features
+
+### **Credential Management**
+- **Ansible Vault**: Encrypted storage for sensitive data
+- **SSH Key Authentication**: Secure, key-based access
+- **Credential Rotation**: Support for credential updates
+
+### **System Hardening**
+- **Firewall Configuration**: Automated iptables management
+- **Service Minimization**: Disable unnecessary services
+- **Access Control**: Proper user and permission management
+- **Audit Logging**: Comprehensive activity tracking
+
+### **Network Security**
+- **Network Segmentation**: Isolated VM networks
+- **Traffic Control**: Granular firewall rules
+- **NAT Configuration**: Secure internet access for VMs
+
+## 📊 Monitoring & Maintenance
+
+### **Health Monitoring**
+```bash
+# System health check
+./scripts/health-check.sh
+
+# GPU passthrough diagnostics  
+./scripts/gpu-passthrough-manager.sh check
+
+# Comprehensive validation
+make validate
+```
+
+### **Log Management**
+- **Centralized Logging**: Structured log collection
+- **Log Rotation**: Automated log management
+- **Audit Trails**: Complete change tracking
+- **Error Reporting**: Proactive issue detection
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[Installation Guide](docs/INSTALLATION.md)** | Step-by-step setup instructions |
+| **[Architecture Overview](docs/ARCHITECTURE.md)** | System design and components |
+| **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** | Common issues and solutions |
+| **[API Reference](docs/API.md)** | Variable and configuration reference |
+| **[Best Practices](docs/BEST_PRACTICES.md)** | Recommended configurations |
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### **Development Workflow**
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes with proper testing
+4. Commit with conventional commit messages
+5. Push to your branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+### **Code Quality**
+- Follow Ansible best practices
+- Include comprehensive documentation
+- Add appropriate tests
+- Ensure security compliance
+
+## 📈 Roadmap
+
+### **Version 1.1** (Planned)
+- [ ] Container orchestration support (Docker/Podman)
+- [ ] Advanced monitoring with Prometheus/Grafana
+- [ ] Automated backup solutions
+- [ ] High availability clustering
+
+### **Version 1.2** (Future)
+- [ ] Web-based management interface
+- [ ] API endpoint integration
+- [ ] Multi-site deployment support
+- [ ] Advanced security features
+
+## 🆘 Support
+
+### **Getting Help**
+- **📖 Documentation**: Check our comprehensive docs
+- **🐛 Issues**: Report bugs via GitHub Issues
+- **💬 Discussions**: Join our community discussions
+- **📧 Contact**: Reach out for enterprise support
+
+### **Community Resources**
+- [Proxmox VE Documentation](https://pve.proxmox.com/wiki/)
+- [Ansible Documentation](https://docs.ansible.com/)
+- [Community Forum](https://forum.proxmox.com/)
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **Proxmox Team**: For the excellent virtualization platform
+- **Ansible Community**: For the powerful automation framework
+- **Contributors**: Everyone who has contributed to this project
+
+---
+
+<div align="center">
+
+**⭐ Star this repository if you find it useful!**
+
+[📖 Documentation](docs/) • [🐛 Report Bug](../../issues) • [💡 Request Feature](../../issues) • [🤝 Contribute](CONTRIBUTING.md)
+
+</div>
 
 ## 🌟 Features
 

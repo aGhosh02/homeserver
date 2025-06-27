@@ -1,0 +1,21 @@
+---
+# Handlers for Home Assistant OS VM Role
+
+- name: start haos vm
+  shell: |
+    if qm status {{ haos_vm_id }} | grep -q "status: running"; then
+      echo "✅ VM {{ haos_vm_id }} is already running"
+      exit 0
+    else
+      echo "🚀 Starting VM {{ haos_vm_id }}..."
+      qm start {{ haos_vm_id }}
+      echo "✅ VM {{ haos_vm_id }} started successfully"
+    fi
+  when: haos_vm.start_after_creation | default(true)
+
+- name: stop haos vm
+  shell: qm stop {{ haos_vm_id }}
+  when: haos_vm_stop_requested | default(false)
+
+- name: restart haos vm
+  shell: qm restart {{ haos_vm_id }}

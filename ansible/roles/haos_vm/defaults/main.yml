@@ -1,0 +1,55 @@
+---
+# Home Assistant OS VM Configuration
+haos_vm:
+  # VM Basic Configuration
+  vmid: ""  # Will be auto-generated if not set
+  hostname: "homeassistant"
+  disk_size: "32G"
+  
+  # Hardware Configuration
+  cpu:
+    type: "host"
+    cores: 2
+  memory: 2048  # MB
+  
+  # Network Configuration
+  network:
+    bridge: "vmbr0"
+    mac_address: ""  # Will be auto-generated if not set
+    vlan_tag: ""
+    mtu: ""
+  
+  # Storage Configuration
+  storage:
+    location: ""  # Will be auto-detected if not set
+    cache: "writethrough"
+    thin_provisioning: true
+  
+  # VM Behavior
+  start_after_creation: true
+  agent_enabled: true
+  onboot: true
+  tablet: false
+  localtime: true
+  bios: "ovmf"
+  ostype: "l26"
+  scsihw: "virtio-scsi-pci"
+  
+  # Home Assistant OS Version
+  version: "stable"  # Options: stable, beta, dev
+
+# Download Configuration
+haos_download:
+  temp_dir: "/tmp/haos-ansible"
+  timeout: 300
+
+# VM Existence Check Configuration
+haos_skip_if_exists: true  # Skip VM creation if Home Assistant OS VM already exists
+  
+# Validation Configuration
+haos_validation:
+  check_proxmox_version: true
+  min_proxmox_version: "8.1"
+  check_architecture: true
+  required_architecture: "amd64"
+  check_storage: true

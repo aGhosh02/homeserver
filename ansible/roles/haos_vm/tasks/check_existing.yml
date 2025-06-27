@@ -1,0 +1,81 @@
+---
+# Check for existing Home Assistant OS VM to prevent duplicates
+
+- name: Set VM search name
+  set_fact:
+    haos_vm_name: "{{ haos_vm.hostname | default('homeassistant') }}"
+  tags: ['check-vm']
+
+- name: Check if Home Assistant OS VM already exists by name
+  shell: |
+    qm list | awk 'NR>1 {print $2}' | grep -i "{{ haos_vm_name }}" || echo "not_found"
+  register: existing_vm_by_name
+  changed_when: false
+  failed_when: false
+  tags: ['check-vm']
+
+- name: Check if Home Assistant OS VM already exists by description/tags
+  shell: |
+    for vmid in $(qm list | awk 'NR>1 {print $1}'); do
+      config=$(qm config $vmid 2>/dev/null || echo "")
+      if echo "$config" | grep -qi "home.?assistant\|haos"; then
+        echo "VMID: $vmid found with Home Assistant configuration"
+        exit 0
+      fi
+    done
+    echo "not_found"
+  register: existing_vm_by_config
+  changed_when: false
+  failed_when: false
+  tags: ['check-vm']
+
+- name: Parse existing VM information
+  set_fact:
+    existing_vm_found: >-
+      {{
+        (existing_vm_by_name.stdout != 'not_found' and existing_vm_by_name.stdout | length > 0) or
+        (existing_vm_by_config.stdout != 'not_found' and existing_vm_by_config.stdout | length > 0)
+      }}
+    existing_vm_info: >-
+      {% if existing_vm_by_name.stdout != 'not_found' and existing_vm_by_name.stdout | length > 0 %}
+      🔍 Found existing VM by name: {{ existing_vm_by_name.stdout }}
+      {% elif existing_vm_by_config.stdout != 'not_found' and existing_vm_by_config.stdout | length > 0 %}
+      🔍 {{ existing_vm_by_config.stdout }}
+      {% else %}
+      ✅ No existing Home Assistant OS VM found
+      {% endif %}
+  tags: ['check-vm']
+
+- name: Display existing VM information
+  debug:
+    msg: |
+      🏠 Home Assistant OS VM Existence Check
+      
+      {{ existing_vm_info }}
+      
+      ⚠️  Skipping VM creation and configuration to prevent duplicates.
+      
+      💡 To force creation of a new VM, run with:
+      ansible-playbook deploy-haos.yml -e haos_skip_if_exists=false
+  when: existing_vm_found
+  tags: ['check-vm']
+
+- name: Display VM creation message
+  debug:
+    msg: |
+      ✅ No existing Home Assistant OS VM found. Proceeding with VM creation.
+      
+      📋 Configuration Summary:
+      🏠 Hostname: {{ haos_vm_name }}
+      🧠 CPU: {{ haos_vm.cpu.cores | default(2) }} cores
+      🛠️ Memory: {{ haos_vm.memory | default(2048) }}MB (2GB)
+      💾 Disk: {{ haos_vm.disk_size | default('32G') }}
+      📦 Version: {{ haos_vm.version | default('stable') }}
+      🚀 Auto-start: {{ haos_vm.start_after_creation | default(true) | ternary('Yes', 'No') }}
+  when: not existing_vm_found
+  tags: ['check-vm']
+
+- name: Skip VM creation if already exists
+  meta: end_play
+  when: existing_vm_found and haos_skip_if_exists | default(true)
+  tags: ['check-vm']

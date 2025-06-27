@@ -1,0 +1,58 @@
+---
+# Storage detection and configuration tasks
+
+- name: Detect available storage if not specified
+  shell: pvesm status -content images | awk 'NR>1 {print $1}' | head -1
+  register: detected_storage
+  changed_when: false
+  when: haos_vm.storage.location is not defined or haos_vm.storage.location == "" or haos_vm.storage.location == null
+
+- name: Debug storage detection
+  debug:
+    msg: |
+      Storage Detection Debug:
+      - Input storage: {{ haos_vm.storage.location | default('undefined') }}
+      - Detected storage: {{ detected_storage.stdout | default('not detected') }}
+      - Storage condition met: {{ (haos_vm.storage.location is not defined or haos_vm.storage.location == "" or haos_vm.storage.location == null) }}
+
+- name: Set storage location fact
+  set_fact:
+    haos_storage_location: "{{ haos_vm.storage.location if (haos_vm.storage.location is defined and haos_vm.storage.location != '' and haos_vm.storage.location != null) else detected_storage.stdout }}"
+
+- name: Validate storage location is not empty
+  fail:
+    msg: "Storage location could not be determined. Please specify haos_vm.storage.location or ensure storage is available."
+  when: haos_storage_location is undefined or haos_storage_location == ""
+
+- name: Get storage type
+  shell: pvesm status -storage {{ haos_storage_location }} | awk 'NR>1 {print $2}'
+  register: storage_type_output
+  changed_when: false
+
+- name: Set storage type fact
+  set_fact:
+    haos_storage_type: "{{ storage_type_output.stdout }}"
+
+- name: Configure storage parameters based on type
+  set_fact:
+    haos_disk_config:
+      ext: "{{ '.raw' if haos_storage_type in ['nfs', 'dir', 'btrfs', 'local-zfs'] else '' }}"
+      ref: "{{ haos_vm_id + '/' if haos_storage_type in ['nfs', 'dir', 'btrfs', 'local-zfs'] else '' }}"
+      import_format: "{{ '-format raw' if haos_storage_type in ['nfs', 'dir', 'btrfs', 'local-zfs'] else '' }}"
+      thin: "{{ '' if haos_storage_type in ['nfs', 'dir', 'btrfs', 'local-zfs'] else 'discard=on,ssd=1,' }}"
+      efi_format: ",efitype=4m"
+
+- name: Set disk references
+  set_fact:
+    haos_disk0: "vm-{{ haos_vm_id }}-disk-0{{ haos_disk_config.ext }}"
+    haos_disk1: "vm-{{ haos_vm_id }}-disk-1{{ haos_disk_config.ext }}"
+    haos_disk0_ref: "{{ haos_storage_location }}:{{ haos_disk_config.ref }}vm-{{ haos_vm_id }}-disk-0{{ haos_disk_config.ext }}"
+    haos_disk1_ref: "{{ haos_storage_location }}:{{ haos_disk_config.ref }}vm-{{ haos_vm_id }}-disk-1{{ haos_disk_config.ext }}"
+
+- name: Display storage configuration
+  debug:
+    msg: |
+      💾 Storage Location: {{ haos_storage_location }}
+      📁 Storage Type: {{ haos_storage_type }}
+      💿 EFI Disk: {{ haos_disk0_ref }}
+      💿 Main Disk: {{ haos_disk1_ref }}

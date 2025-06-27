@@ -1,0 +1,78 @@
+---
+# VM ID generation and MAC address generation tasks
+
+- name: Generate random MAC address if not provided
+  shell: |
+    echo "02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')"
+  register: generated_mac
+  changed_when: false
+  when: haos_vm.network.mac_address is not defined or haos_vm.network.mac_address == "" or haos_vm.network.mac_address == null
+
+- name: Set MAC address fact
+  set_fact:
+    haos_mac_address: "{{ haos_vm.network.mac_address if (haos_vm.network.mac_address is defined and haos_vm.network.mac_address != '' and haos_vm.network.mac_address != null) else generated_mac.stdout }}"
+
+- name: Debug MAC address generation
+  debug:
+    msg: |
+      MAC Address Debug:
+      - Input MAC: {{ haos_vm.network.mac_address | default('undefined') }}
+      - Generated MAC: {{ generated_mac.stdout | default('not generated') }}
+      - Final MAC: {{ haos_mac_address }}
+
+- name: Get next available VM ID if not specified
+  shell: pvesh get /cluster/nextid
+  register: next_vmid_output
+  changed_when: false
+  when: haos_vm.vmid is not defined or haos_vm.vmid == "" or haos_vm.vmid == null
+
+- name: Find valid VM ID
+  shell: |
+    try_id={{ next_vmid_output.stdout | default('100') }}
+    while true; do
+      if [ -f "/etc/pve/qemu-server/${try_id}.conf" ] || [ -f "/etc/pve/lxc/${try_id}.conf" ]; then
+        try_id=$((try_id + 1))
+        continue
+      fi
+      if lvs --noheadings -o lv_name 2>/dev/null | grep -qE "(^|[-_])${try_id}($|[-_])"; then
+        try_id=$((try_id + 1))
+        continue
+      fi
+      break
+    done
+    echo "$try_id"
+  register: valid_vmid_output
+  changed_when: false
+  when: haos_vm.vmid is not defined or haos_vm.vmid == "" or haos_vm.vmid == null
+
+- name: Set VM ID fact
+  set_fact:
+    haos_vm_id: "{{ haos_vm.vmid if (haos_vm.vmid is defined and haos_vm.vmid != '' and haos_vm.vmid != null) else valid_vmid_output.stdout }}"
+
+- name: Debug VM ID generation
+  debug:
+    msg: |
+      VM ID Debug:
+      - Input VMID: {{ haos_vm.vmid | default('undefined') }}
+      - Generated VMID: {{ valid_vmid_output.stdout | default('not generated') }}
+      - Final VMID: {{ haos_vm_id }}
+
+- name: Generate random UUID for VM
+  shell: cat /proc/sys/kernel/random/uuid
+  register: vm_uuid_output
+  changed_when: false
+
+- name: Set VM UUID fact
+  set_fact:
+    haos_vm_uuid: "{{ vm_uuid_output.stdout }}"
+
+- name: Display VM configuration
+  debug:
+    msg: |
+      🆔 VM ID: {{ haos_vm_id }}
+      🔗 MAC Address: {{ haos_mac_address }}
+      🏠 Hostname: {{ haos_vm.hostname | default('haos') }}
+      🖥️ CPU Cores: {{ haos_vm.cpu.cores }}
+      🛠️ RAM: {{ haos_vm.memory }}MB
+      💾 Disk Size: {{ haos_vm.disk_size }}
+      🌉 Bridge: {{ haos_vm.network.bridge }}

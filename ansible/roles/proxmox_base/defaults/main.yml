@@ -4,7 +4,7 @@ domain_name: "{{ inventory_hostname }}.local"
 
 # System configuration
 system_config:
-  update_packages: "{{ _system_update_override | default(true) }}"
+  update_packages: true
   install_essential_packages: true
   remove_enterprise_repos: true
   disable_subscription_nag: true

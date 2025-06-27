@@ -1,0 +1,63 @@
+---
+# Variable preparation and validation
+
+- name: Debug received haos_vm variable
+  debug:
+    msg: |
+      Received haos_vm variable:
+      Type: {{ haos_vm | type_debug }}
+      Content: {{ haos_vm }}
+
+- name: Set default haos_vm configuration
+  set_fact:
+    haos_vm_defaults:
+      # VM Basic Configuration
+      vmid: ""
+      hostname: "homeassistant"
+      disk_size: "32G"
+      
+      # Hardware Configuration
+      cpu:
+        type: "host"
+        cores: 2
+      memory: 2048  # MB
+      
+      # Network Configuration
+      network:
+        bridge: "vmbr0"
+        mac_address: ""
+        vlan_tag: ""
+        mtu: ""
+      
+      # Storage Configuration
+      storage:
+        location: ""
+        cache: "writethrough"
+        thin_provisioning: true
+      
+      # VM Behavior
+      start_after_creation: true
+      agent_enabled: true
+      onboot: true
+      tablet: false
+      localtime: true
+      bios: "ovmf"
+      ostype: "l26"
+      scsihw: "virtio-scsi-pci"
+      
+      # Home Assistant OS Version
+      version: "stable"
+
+- name: Merge haos_vm with defaults
+  set_fact:
+    haos_vm_config: "{{ haos_vm_defaults | combine(haos_vm, recursive=True) }}"
+
+- name: Update haos_vm variable with merged config
+  set_fact:
+    haos_vm: "{{ haos_vm_config }}"
+
+- name: Display final haos_vm configuration
+  debug:
+    msg: |
+      Final haos_vm configuration:
+      {{ haos_vm | to_nice_yaml }}

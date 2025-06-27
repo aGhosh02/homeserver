@@ -25,22 +25,27 @@
   when: system_config.disable_subscription_nag | default(true)
   tags: ['subscription-nag']
 
+- name: Remove broken subscription nag script if it exists
+  file:
+    path: /etc/apt/apt.conf.d/99-pve-no-subscription-nag
+    state: absent
+  when: 
+    - system_config.disable_subscription_nag | default(true)
+  tags: ['subscription-nag']
+
 - name: Create persistent subscription nag removal script
   copy:
     content: |
       # Automatically remove subscription warnings from Proxmox VE UI
       # This script runs after package updates to maintain the fix
-      DPkg::Post-Invoke { 
-        "if [ -f /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js ]; then "
-        "sed -i.bak 's/if (data.status.*{/if (false) {/' /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js 2>/dev/null; "
-        "fi"; 
+      DPkg::Post-Invoke {
+        "if [ -f /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js ]; then sed -i.bak 's/if (data.status.*{/if (false) {/' /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js 2>/dev/null; fi";
       };
     dest: /etc/apt/apt.conf.d/99-pve-no-subscription-nag
     mode: '0644'
     backup: true
   when: 
     - system_config.disable_subscription_nag | default(true)
-    - not nag_script_exists.stat.exists
   notify: "widget toolkit"
   tags: ['subscription-nag']
 
