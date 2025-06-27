@@ -1,0 +1,18 @@
+---
+- name: start omv vm
+  command: qm start {{ omv_vm_id }}
+  when: omv_vm_id is defined
+
+- name: stop omv vm
+  command: qm stop {{ omv_vm_id }}
+  when: omv_vm_id is defined
+
+- name: restart omv vm
+  command: qm restart {{ omv_vm_id }}
+  when: omv_vm_id is defined
+
+- name: cleanup omv temp files
+  file:
+    path: "{{ omv_temp_dir }}"
+    state: absent
+  when: omv_temp_dir is defined

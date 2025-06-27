@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  author: System Administrator
+  description: OpenMediaVault VM deployment role for Proxmox VE
+  company: Personal
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+  galaxy_tags:
+    - proxmox
+    - vm
+    - nas
+    - openmediavault
+    - storage
+
+dependencies:
+  - role: common
+    when: common_tasks_enabled | default(true)

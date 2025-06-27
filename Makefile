@@ -146,6 +146,7 @@ syntax-check: ## Check syntax of all playbooks
 	cd ansible && ansible-playbook playbooks/validate.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/maintenance.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/deploy-haos.yml --syntax-check
+	cd ansible && ansible-playbook playbooks/deploy-omv.yml --syntax-check
 
 inventory: ## Show inventory information
 	@echo "📋 Inventory information:"
@@ -221,6 +222,18 @@ deploy-haos-check: ## Check Home Assistant OS deployment (dry-run)
 deploy-haos-force: ## Force deploy Home Assistant OS VM (even if exists)
 	@echo "$(BLUE)🏠 Force deploying Home Assistant OS VM...$(RESET)"
 	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-haos.yml -e haos_skip_if_exists=false
+
+deploy-omv: ## Deploy OpenMediaVault NAS VM (4GB RAM, SATA controller)
+	@echo "💾 Deploying OpenMediaVault NAS VM..."
+	cd ansible && ansible-playbook playbooks/deploy-omv.yml --vault-password-file .vault_pass
+
+deploy-omv-check: ## Check OpenMediaVault deployment (dry-run)
+	@echo "🔍 Checking OpenMediaVault deployment..."
+	cd ansible && ansible-playbook playbooks/deploy-omv.yml --check --diff
+
+deploy-omv-force: ## Force deploy OpenMediaVault VM (even if exists)
+	@echo "$(BLUE)💾 Force deploying OpenMediaVault VM...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-omv.yml -e omv_skip_if_exists=false
 
 # New enhanced targets
 config-validate: ## Validate all configuration files

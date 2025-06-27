@@ -1,0 +1,103 @@
+---
+# VM Creation tasks
+
+- name: Set network configuration variables
+  set_fact:
+    vm_bridge: "{{ omv_vm.network.bridge | default('vmbr0') }}"
+    vm_vlan_tag: "{{ omv_vm.network.vlan_tag | default('') }}"
+    vm_mtu: "{{ omv_vm.network.mtu | default('') }}"
+
+- name: Build network string
+  set_fact:
+    vm_network_string: "virtio,bridge={{ vm_bridge }},macaddr={{ omv_mac_address }}{{ ',tag=' + vm_vlan_tag if vm_vlan_tag else '' }}{{ ',mtu=' + vm_mtu if vm_mtu else '' }}"
+
+- name: Debug VM creation variables
+  debug:
+    msg: |
+      VM Creation Debug:
+      - VM ID: {{ omv_vm_id }}
+      - MAC Address: {{ omv_mac_address }}
+      - Network String: {{ vm_network_string }}
+      - Hostname: {{ omv_vm.hostname | default('openmediavault') }}
+
+- name: Validate required variables before VM creation
+  fail:
+    msg: "Required variable {{ item.name }} is not set or empty"
+  when: item.value is undefined or item.value == ""
+  loop:
+    - { name: "omv_vm_id", value: "{{ omv_vm_id | default('') }}" }
+    - { name: "omv_mac_address", value: "{{ omv_mac_address | default('') }}" }
+
+- name: Create OpenMediaVault VM with balloon disabled
+  shell: |
+    qm create {{ omv_vm_id }} \
+      -agent {{ omv_vm.agent_enabled | default(true) | ternary('1', '0') }} \
+      -tablet {{ omv_vm.tablet | default(false) | ternary('1', '0') }} \
+      -localtime {{ omv_vm.localtime | default(true) | ternary('1', '0') }} \
+      -bios {{ omv_vm.bios | default('ovmf') }} \
+      -cpu {{ omv_vm.cpu.type | default('host') }} \
+      -cores {{ omv_vm.cpu.cores | default(2) }} \
+      -memory {{ omv_vm.memory | default(4096) }} \
+      -balloon {{ omv_vm.balloon | default(false) | ternary('1', '0') }} \
+      -name {{ omv_vm.hostname | default('openmediavault') }} \
+      -tags community-script,nas,omv \
+      -net0 {{ vm_network_string }} \
+      -onboot {{ omv_vm.onboot | default(true) | ternary('1', '0') }} \
+      -ostype {{ omv_vm.ostype | default('l26') }} \
+      -scsihw {{ omv_vm.scsihw | default('virtio-scsi-pci') }}
+  register: vm_create_result
+  failed_when: vm_create_result.rc != 0
+
+- name: Validate storage and disk variables before EFI allocation
+  fail:
+    msg: "Required variable {{ item.name }} is not set or empty"
+  when: item.value is undefined or item.value == ""
+  loop:
+    - { name: "omv_storage_location", value: "{{ omv_storage_location | default('') }}" }
+    - { name: "omv_disk0", value: "{{ omv_disk0 | default('') }}" }
+
+- name: Allocate EFI disk
+  shell: pvesm alloc {{ omv_storage_location }} {{ omv_vm_id }} {{ omv_disk0 }} 4M
+  register: efi_alloc_result
+  failed_when: efi_alloc_result.rc != 0
+
+- name: Debug EFI disk allocation variables
+  debug:
+    msg: |
+      EFI Disk Allocation Debug:
+      - Storage Location: {{ omv_storage_location | default('undefined') }}
+      - VM ID: {{ omv_vm_id | default('undefined') }}
+      - Disk0 Name: {{ omv_disk0 | default('undefined') }}
+      - Command: pvesm alloc {{ omv_storage_location }} {{ omv_vm_id }} {{ omv_disk0 }} 4M
+
+- name: Create main storage disk
+  shell: pvesm alloc {{ omv_storage_location }} {{ omv_vm_id }} {{ omv_disk1 }} {{ omv_vm.disk_size | default('32G') }}
+  register: main_disk_result
+  failed_when: main_disk_result.rc != 0
+
+- name: Set storage configuration variables
+  set_fact:
+    vm_storage_cache: "{{ omv_vm.storage.cache | default('writethrough') }}"
+    vm_disk_size: "{{ omv_vm.disk_size | default('32G') }}"
+
+- name: Build storage cache string
+  set_fact:
+    vm_cache_string: "{{ 'cache=' + vm_storage_cache + ',' if vm_storage_cache else '' }}"
+
+- name: Configure VM disks and boot order
+  shell: |
+    qm set {{ omv_vm_id }} \
+      -efidisk0 {{ omv_disk0_ref }}{{ omv_disk_config.efi_format }} \
+      -scsi0 {{ omv_disk1_ref }},{{ vm_cache_string }}{{ omv_disk_config.thin }}size={{ vm_disk_size }} \
+      -boot order=scsi0
+  register: disk_config_result
+  failed_when: disk_config_result.rc != 0
+
+- name: Display VM creation success
+  debug:
+    msg: |
+      ✅ Successfully created OpenMediaVault VM
+      🆔 VM ID: {{ omv_vm_id }}
+      💾 Hostname: {{ omv_vm.hostname }}
+      💿 Disks configured and ready
+      🎈 Balloon: {{ omv_vm.balloon | default(false) | ternary('Enabled', 'Disabled') }}

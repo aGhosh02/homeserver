@@ -1,0 +1,62 @@
+---
+# OpenMediaVault VM Configuration
+omv_vm:
+  # VM Basic Configuration
+  vmid: ""  # Will be auto-generated if not set
+  hostname: "openmediavault"
+  disk_size: "32G"
+  
+  # Hardware Configuration
+  cpu:
+    type: "host"
+    cores: 2
+  memory: 4096  # MB (4GB as specified)
+  
+  # Network Configuration
+  network:
+    bridge: "vmbr0"
+    mac_address: ""  # Will be auto-generated if not set
+    vlan_tag: ""
+    mtu: ""
+  
+  # Storage Configuration
+  storage:
+    location: ""  # Will be auto-detected if not set
+    cache: "writethrough"
+    thin_provisioning: true
+  
+  # VM Behavior
+  start_after_creation: true
+  agent_enabled: true
+  onboot: true
+  tablet: false
+  localtime: true
+  bios: "ovmf"
+  ostype: "l26"
+  scsihw: "virtio-scsi-pci"
+  
+  # OpenMediaVault specific settings
+  balloon: false  # Disable ballooning as specified
+  
+  # NAS Storage Configuration
+  nas_storage:
+    passthrough_disks: []  # List of physical disks to passthrough
+    sata_controller: true  # Enable SATA controller for disk passthrough
+
+# Download Configuration
+omv_download:
+  temp_dir: "/tmp/omv-ansible"
+  timeout: 600  # Longer timeout for ISO download
+  iso_url: "https://sourceforge.net/projects/openmediavault/files/iso/7.4.17/openmediavault_7.4.17-amd64.iso"
+  iso_filename: "openmediavault_7.4.17-amd64.iso"
+  version: "7.4.17"
+
+# VM Existence Check Configuration
+omv_skip_if_exists: true  # Skip VM creation if OpenMediaVault VM already exists
+  
+# Validation Configuration
+omv_validation:
+  check_disk_space: true
+  minimum_disk_space: "40G"  # Minimum space needed for VM and ISO
+  check_network: true
+  check_virtualization: true

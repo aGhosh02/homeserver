@@ -1,0 +1,65 @@
+---
+# Cleanup tasks
+
+- name: Clean up temporary files
+  file:
+    path: "{{ omv_temp_dir }}"
+    state: absent
+  when: 
+    - omv_temp_dir is defined
+    - omv_temp_dir != ""
+  ignore_errors: true
+
+- name: Start VM if configured to do so
+  shell: qm start {{ omv_vm_id }}
+  register: vm_start_result
+  when: 
+    - omv_vm.start_after_creation | default(true)
+    - omv_vm_id is defined
+  ignore_errors: true
+
+- name: Display VM start result
+  debug:
+    msg: |
+      {% if omv_vm.start_after_creation | default(true) %}
+      {% if vm_start_result.rc == 0 %}
+      ✅ VM started successfully
+      {% else %}
+      ⚠️  VM creation completed but failed to start automatically
+      Start manually: qm start {{ omv_vm_id }}
+      {% endif %}
+      {% else %}
+      ℹ️  VM created but not started (start_after_creation: false)
+      {% endif %}
+  when: omv_vm_id is defined
+
+- name: Display final completion message
+  debug:
+    msg: |
+      🎉 OpenMediaVault VM Deployment Complete!
+      
+      📋 Summary:
+      - 🆔 VM ID: {{ omv_vm_id }}
+      - 💾 Hostname: {{ omv_vm.hostname }}
+      - 🧠 CPU Cores: {{ omv_vm.cpu.cores }} (shared)
+      - 🛠️ Memory: {{ omv_vm.memory }}MB (4GB)
+      - 💾 Disk Size: {{ omv_vm.disk_size }}
+      - 🎈 Balloon Memory: {{ omv_vm.balloon | default(false) | ternary('Enabled', 'Disabled') }}
+      - 🗄️ SATA Controller: {{ omv_vm.nas_storage.sata_controller | default(true) | ternary('Enabled', 'Disabled') }}
+      {% if omv_vm.nas_storage.passthrough_disks | length > 0 %}
+      - 💿 Passthrough Disks: {{ omv_vm.nas_storage.passthrough_disks | join(', ') }}
+      {% endif %}
+      
+      🚀 Next Steps:
+      1. Access Proxmox Web UI: https://{{ ansible_host }}:8006
+      2. Navigate to VM {{ omv_vm_id }} ({{ omv_vm.hostname }})
+      3. Start VM if not auto-started: qm start {{ omv_vm_id }}
+      4. Open VM console and follow OpenMediaVault installation
+      5. After installation:
+         - Remove ISO from VM
+         - Change boot order to boot from disk
+         - Configure network settings
+         - Set up storage pools and shares
+      
+      📖 OpenMediaVault Documentation: https://docs.openmediavault.org/
+      🔧 Default login after installation: admin / openmediavault

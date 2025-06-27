@@ -1,0 +1,78 @@
+---
+# Validation tasks for OpenMediaVault VM deployment
+
+- name: Check if running on Proxmox VE
+  stat:
+    path: /etc/pve
+  register: pve_check
+  
+- name: Fail if not running on Proxmox VE
+  fail:
+    msg: "This role must be run on a Proxmox VE host"
+  when: not pve_check.stat.exists
+
+- name: Check available disk space
+  shell: df -BG {{ ansible_env.HOME }} | awk 'NR==2 {print $4}' | sed 's/G//'
+  register: available_space
+  changed_when: false
+
+- name: Validate minimum disk space
+  fail:
+    msg: "Insufficient disk space. Available: {{ available_space.stdout }}G, Required: {{ omv_validation.minimum_disk_space | default('40G') }}"
+  when: 
+    - omv_validation.check_disk_space | default(true)
+    - available_space.stdout | int < 40
+
+- name: Check virtualization support
+  shell: |
+    if [ -f /proc/cpuinfo ]; then
+      grep -E "(vmx|svm)" /proc/cpuinfo > /dev/null && echo "supported" || echo "not_supported"
+    else
+      echo "unknown"
+    fi
+  register: virt_support
+  changed_when: false
+  when: omv_validation.check_virtualization | default(true)
+
+- name: Validate virtualization support
+  fail:
+    msg: "Hardware virtualization not supported or not enabled"
+  when: 
+    - omv_validation.check_virtualization | default(true)
+    - virt_support.stdout == "not_supported"
+
+- name: Check network connectivity
+  uri:
+    url: "{{ omv_download.iso_url }}"
+    method: HEAD
+    timeout: 10
+  register: network_check
+  when: omv_validation.check_network | default(true)
+  failed_when: false
+
+- name: Validate network connectivity
+  debug:
+    msg: "⚠️  Warning: Cannot reach OpenMediaVault download URL. Download may fail."
+  when: 
+    - omv_validation.check_network | default(true)
+    - network_check.status is undefined or network_check.status != 200
+
+- name: Check for required Proxmox tools
+  command: which {{ item }}
+  register: tool_check
+  changed_when: false
+  failed_when: tool_check.rc != 0
+  loop:
+    - qm
+    - pvesm
+    - pct
+
+- name: Display validation success
+  debug:
+    msg: |
+      ✅ All validation checks passed
+      - Proxmox VE: Ready
+      - Disk Space: {{ available_space.stdout }}G available
+      - Virtualization: {{ virt_support.stdout | default('checked') }}
+      - Network: {{ 'Connected' if (network_check.status | default(0) == 200) else 'Warning - check connection' }}
+      - Tools: qm, pvesm, pct available

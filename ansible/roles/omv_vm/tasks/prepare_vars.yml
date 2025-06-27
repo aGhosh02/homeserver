@@ -1,0 +1,32 @@
+---
+# Variable preparation and MAC address generation
+
+- name: Generate MAC address if not provided
+  set_fact:
+    omv_mac_address: >-
+      {{
+        omv_vm.network.mac_address if (omv_vm.network.mac_address is defined and omv_vm.network.mac_address != '')
+        else '52:54:00:' + '%02x' | format(range(0,256) | random) + ':' + '%02x' | format(range(0,256) | random) + ':' + '%02x' | format(range(0,256) | random)
+      }}
+
+- name: Set final VM configuration
+  set_fact:
+    omv_final_config:
+      vmid: "{{ omv_vm.vmid if (omv_vm.vmid is defined and omv_vm.vmid != '') else '' }}"
+      hostname: "{{ omv_vm.hostname | default('openmediavault') }}"
+      memory: "{{ omv_vm.memory | default(4096) }}"
+      cores: "{{ omv_vm.cpu.cores | default(2) }}"
+      disk_size: "{{ omv_vm.disk_size | default('32G') }}"
+      mac_address: "{{ omv_mac_address }}"
+
+- name: Display configuration summary
+  debug:
+    msg: |
+      OpenMediaVault VM Configuration:
+      - Hostname: {{ omv_final_config.hostname }}
+      - Memory: {{ omv_final_config.memory }}MB
+      - CPU Cores: {{ omv_final_config.cores }}
+      - Disk Size: {{ omv_final_config.disk_size }}
+      - MAC Address: {{ omv_final_config.mac_address }}
+      - Balloon: {{ omv_vm.balloon | default(false) | ternary('enabled', 'disabled') }}
+  tags: ['debug']

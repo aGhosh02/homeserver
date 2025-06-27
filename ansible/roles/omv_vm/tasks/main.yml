@@ -1,0 +1,41 @@
+---
+- name: Prepare variables and merge defaults
+  include_tasks: prepare_vars.yml
+  tags: ['always']
+
+- name: Include validation tasks
+  include_tasks: validation.yml
+  tags: ['validation', 'always']
+
+- name: Check for existing OpenMediaVault VM
+  include_tasks: check_existing.yml
+  tags: ['check-vm', 'always']
+
+- name: Include VM ID generation tasks
+  include_tasks: vm_id.yml
+  tags: ['vm-setup']
+
+- name: Include storage detection tasks
+  include_tasks: storage.yml
+  tags: ['storage', 'vm-setup']
+
+- name: Include OpenMediaVault ISO download tasks
+  include_tasks: download.yml
+  tags: ['download', 'vm-setup']
+
+- name: Include VM creation tasks
+  include_tasks: create_vm.yml
+  tags: ['create-vm', 'vm-setup']
+
+- name: Include VM configuration tasks
+  include_tasks: configure_vm.yml
+  tags: ['configure-vm', 'vm-setup']
+
+- name: Include disk passthrough tasks
+  include_tasks: disk_passthrough.yml
+  tags: ['disk-passthrough', 'vm-setup']
+  when: omv_vm.nas_storage.passthrough_disks | length > 0
+
+- name: Include cleanup tasks
+  include_tasks: cleanup.yml
+  tags: ['cleanup', 'always']

@@ -1,0 +1,51 @@
+---
+# VM Configuration tasks
+
+- name: Attach OpenMediaVault ISO to VM
+  shell: |
+    qm set {{ omv_vm_id }} -ide2 {{ omv_iso_storage_path }},media=cdrom
+  register: iso_attach_result
+  failed_when: iso_attach_result.rc != 0
+
+- name: Add SATA controller for NAS disk passthrough
+  shell: |
+    qm set {{ omv_vm_id }} -sata0 none
+  register: sata_controller_result
+  failed_when: sata_controller_result.rc != 0
+  when: omv_vm.nas_storage.sata_controller | default(true)
+
+- name: Configure VM for better NAS performance
+  shell: |
+    qm set {{ omv_vm_id }} \
+      -description "OpenMediaVault NAS VM - Version {{ omv_download.version }}" \
+      -protection 0 \
+      -startup "order=2,up=30"
+  register: performance_config_result
+  failed_when: performance_config_result.rc != 0
+
+- name: Set VM to boot from CD-ROM for installation
+  shell: |
+    qm set {{ omv_vm_id }} -boot order=ide2
+  register: boot_config_result
+  failed_when: boot_config_result.rc != 0
+
+- name: Display VM configuration summary
+  debug:
+    msg: |
+      ✅ OpenMediaVault VM Configuration Complete
+      
+      📋 VM Details:
+      - 🆔 VM ID: {{ omv_vm_id }}
+      - 💾 Name: {{ omv_vm.hostname }}
+      - 🧠 CPU: {{ omv_vm.cpu.cores }} cores ({{ omv_vm.cpu.type }})
+      - 🛠️ Memory: {{ omv_vm.memory }}MB ({{ (omv_vm.memory / 1024) | round(1) }}GB)
+      - 💾 Main Disk: {{ omv_vm.disk_size }}
+      - 🎈 Balloon: {{ omv_vm.balloon | default(false) | ternary('Enabled', 'Disabled') }}
+      - 🗄️ SATA Controller: {{ omv_vm.nas_storage.sata_controller | default(true) | ternary('Added', 'Skipped') }}
+      - 📀 ISO: Attached and set as boot device
+      
+      🚀 Next Steps:
+      1. Start the VM: qm start {{ omv_vm_id }}
+      2. Access VM console for OpenMediaVault installation
+      3. After installation, change boot order to boot from disk
+      4. Configure disk passthrough if needed

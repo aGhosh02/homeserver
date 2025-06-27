@@ -1,0 +1,80 @@
+---
+# Disk passthrough tasks for NAS storage
+
+- name: Validate passthrough disk configuration
+  fail:
+    msg: "No disks specified for passthrough. Please configure omv_vm.nas_storage.passthrough_disks"
+  when: omv_vm.nas_storage.passthrough_disks | length == 0
+
+- name: Display passthrough disk information
+  debug:
+    msg: |
+      🗄️ Configuring disk passthrough for NAS
+      💿 Disks to passthrough: {{ omv_vm.nas_storage.passthrough_disks | join(', ') }}
+
+- name: Check if specified disks exist
+  stat:
+    path: "/dev/{{ item }}"
+  register: disk_check
+  loop: "{{ omv_vm.nas_storage.passthrough_disks }}"
+  failed_when: not disk_check.stat.exists
+
+- name: Validate disks are not mounted
+  shell: |
+    if mount | grep -q "/dev/{{ item }}"; then
+      echo "mounted"
+    else
+      echo "not_mounted"
+    fi
+  register: mount_check
+  loop: "{{ omv_vm.nas_storage.passthrough_disks }}"
+  changed_when: false
+
+- name: Warn about mounted disks
+  debug:
+    msg: "⚠️  Warning: Disk {{ item.item }} appears to be mounted. Ensure it's safe to passthrough."
+  loop: "{{ mount_check.results }}"
+  when: item.stdout == "mounted"
+
+- name: Get disk information
+  shell: |
+    lsblk -no SIZE,MODEL /dev/{{ item }} 2>/dev/null || echo "unknown unknown"
+  register: disk_info
+  loop: "{{ omv_vm.nas_storage.passthrough_disks }}"
+  changed_when: false
+
+- name: Passthrough disks to VM via SATA controller
+  shell: |
+    # Find next available SATA port (starting from sata1, as sata0 is reserved)
+    sata_port=1
+    while qm config {{ omv_vm_id }} | grep -q "sata${sata_port}:"; do
+      sata_port=$((sata_port + 1))
+    done
+    
+    # Add disk to SATA controller
+    qm set {{ omv_vm_id }} -sata${sata_port} /dev/disk/by-id/$(ls -la /dev/disk/by-id/ | grep "{{ item }}" | grep -v part | head -1 | awk '{print $9}')
+  register: disk_passthrough_results
+  loop: "{{ omv_vm.nas_storage.passthrough_disks }}"
+  failed_when: disk_passthrough_results.rc != 0
+
+- name: Display passthrough results
+  debug:
+    msg: |
+      ✅ Disk passthrough configuration complete
+      
+      🗄️ Passthrough Summary:
+      {% for i in range(omv_vm.nas_storage.passthrough_disks | length) %}
+      - {{ omv_vm.nas_storage.passthrough_disks[i] }}: {{ disk_info.results[i].stdout }}
+      {% endfor %}
+      
+      📋 SATA Controller Configuration:
+      - SATA0: Reserved for controller
+      {% for i in range(1, omv_vm.nas_storage.passthrough_disks | length + 1) %}
+      - SATA{{ i }}: /dev/{{ omv_vm.nas_storage.passthrough_disks[i-1] }}
+      {% endfor %}
+      
+      ⚠️  Important Notes:
+      - Disks are passed through directly to the VM
+      - Host system cannot access these disks while VM is running
+      - Configure RAID/storage pools within OpenMediaVault
+      - Ensure proper backups before proceeding

@@ -28,6 +28,7 @@ This repository provides a complete infrastructure-as-code solution for automate
 
 ### 🏠 **VM Deployment**
 - **Home Assistant OS**: Automated HAOS VM deployment with optimized configuration
+- **OpenMediaVault**: NAS VM deployment with disk passthrough and SATA controller
 - **Resource Management**: Intelligent resource allocation and optimization
 - **Template Support**: Extensible VM deployment templates
 
@@ -102,6 +103,7 @@ make run-base      # Base system configuration only
 make run-network   # Network setup only  
 make run-gpu       # GPU passthrough only
 make deploy-haos   # Home Assistant OS deployment
+make deploy-omv    # OpenMediaVault NAS deployment
 ```
 
 ### **Maintenance Operations**
@@ -133,12 +135,14 @@ homeserver/
 │   │   ├── 📄 site.yml         # Primary deployment playbook
 │   │   ├── 📄 maintenance.yml  # System maintenance tasks
 │   │   ├── 📄 validate.yml     # Validation and testing
-│   │   └── 📄 deploy-haos.yml  # Home Assistant OS deployment
+│   │   ├── 📄 deploy-haos.yml  # Home Assistant OS deployment
+│   │   └── 📄 deploy-omv.yml   # OpenMediaVault NAS deployment
 │   └── 📁 roles/               # Modular configuration roles
 │       ├── 📁 proxmox_base/    # Base system configuration
 │       ├── 📁 vm_networking/   # Network bridge setup
 │       ├── 📁 gpu_passthrough/ # GPU passthrough automation
 │       ├── 📁 haos_vm/         # Home Assistant OS deployment
+│       ├── 📁 omv_vm/          # OpenMediaVault NAS deployment
 │       └── 📁 common/          # Shared validation tasks
 ├── 📁 docs/                    # Comprehensive documentation
 ├── 📁 scripts/                 # Utility and management scripts
@@ -171,6 +175,12 @@ homeserver/
 - Resource allocation and storage management
 - Network attachment and boot configuration
 - VM lifecycle management
+
+### **omv_vm** - NAS VM Deployment
+- OpenMediaVault NAS VM creation and configuration
+- Disk passthrough via SATA controller for direct storage access
+- Memory balloon disabled for stable NAS performance
+- ISO download and VM installation automation
 
 ## 🔐 Security Features
 

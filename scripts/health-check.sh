@@ -101,7 +101,7 @@ check_resources() {
 check_storage() {
     echo -e "${BLUE}💾 Checking storage pools...${NC}"
     
-    if command -v pvesm &> /dev/null; then
+    if [ -x "/usr/sbin/pvesm" ] || [ -x "/usr/bin/pvesm" ]; then
         pvesm status | while read -r line; do
             if [[ "$line" =~ ^(local|local-lvm) ]]; then
                 echo -e "${GREEN}✅ Storage: $line${NC}"
@@ -179,7 +179,7 @@ generate_report() {
         echo "- Disk: $(df / | awk 'NR==2{print $5}')"
         echo ""
         echo "VM Information:"
-        if command -v qm &> /dev/null; then
+        if [ -x "/usr/sbin/qm" ] || [ -x "/usr/bin/qm" ]; then
             qm list
         else
             echo "PVE commands not available"

@@ -1,0 +1,197 @@
+---
+- name: Deploy OpenMediaVault VM on Proxmox
+  hosts: proxmox
+  become: true
+  gather_facts: true
+  vars:
+    # OpenMediaVault VM Configuration
+    omv_vm:
+      # VM Basic Configuration
+      vmid: ""  # Will be auto-generated if not set
+      hostname: "openmediavault"
+      disk_size: "32G"
+      
+      # Hardware Configuration
+      cpu:
+        type: "host"
+        cores: 2  # 2 cores (shared)
+      memory: 4096  # MB (4GB as specified)
+      
+      # Network Configuration
+      network:
+        bridge: "vmbr0"
+        mac_address: ""  # Auto-generated if not specified
+        vlan_tag: ""
+        mtu: ""
+      
+      # Storage Configuration
+      storage:
+        location: ""  # Auto-detected if not specified
+        cache: "writethrough"
+        thin_provisioning: true
+      
+      # VM Behavior
+      start_after_creation: true
+      agent_enabled: true
+      onboot: true
+      tablet: false
+      localtime: true
+      bios: "ovmf"
+      ostype: "l26"
+      scsihw: "virtio-scsi-pci"
+      
+      # OpenMediaVault specific settings
+      balloon: false  # Disable ballooning as specified
+      
+      # NAS Storage Configuration
+      nas_storage:
+        passthrough_disks: []  # Add disk names here (e.g., ['sdb', 'sdc'])
+        sata_controller: true  # Enable SATA controller for disk passthrough
+
+    # Download Configuration
+    omv_download:
+      iso_url: "https://sourceforge.net/projects/openmediavault/files/iso/7.4.17/openmediavault_7.4.17-amd64.iso"
+      iso_filename: "openmediavault_7.4.17-amd64.iso"
+      version: "7.4.17"
+      timeout: 600
+
+  pre_tasks:
+    - name: Display playbook start information
+      debug:
+        msg: |
+          💾 Starting OpenMediaVault VM Deployment
+          
+          📋 Configuration Overview:
+          - Hostname: {{ omv_vm.hostname }}
+          - CPU Cores: {{ omv_vm.cpu.cores }} (shared)
+          - Memory: {{ omv_vm.memory }}MB ({{ (omv_vm.memory / 1024) | round(1) }}GB)
+          - Disk Size: {{ omv_vm.disk_size }}
+          - Balloon Memory: {{ omv_vm.balloon | ternary('Enabled', 'Disabled') }}
+          - SATA Controller: {{ omv_vm.nas_storage.sata_controller | ternary('Enabled', 'Disabled') }}
+          - ISO Version: {{ omv_download.version }}
+          {% if omv_vm.nas_storage.passthrough_disks | length > 0 %}
+          - Passthrough Disks: {{ omv_vm.nas_storage.passthrough_disks | join(', ') }}
+          {% else %}
+          - Passthrough Disks: None configured
+          {% endif %}
+          
+          🚀 Deployment starting...
+
+    - name: Validate Proxmox environment
+      shell: |
+        echo "Checking Proxmox environment..."
+        if [ ! -x "/usr/sbin/qm" ] && [ ! -x "/usr/bin/qm" ]; then
+          echo "ERROR: qm command not found. Not running on Proxmox?"
+          exit 1
+        fi
+        if [ ! -x "/usr/sbin/pvesm" ] && [ ! -x "/usr/bin/pvesm" ]; then
+          echo "ERROR: pvesm command not found. Not running on Proxmox?"
+          exit 1
+        fi
+        echo "✅ Proxmox environment validated"
+      register: proxmox_check
+      changed_when: false
+
+    - name: Display Proxmox validation
+      debug:
+        var: proxmox_check.stdout_lines
+
+  roles:
+    - role: omv_vm
+      tags: ['omv', 'vm', 'nas']
+
+  post_tasks:
+    - name: Display completion summary
+      debug:
+        msg: |
+          🎉 OpenMediaVault VM Deployment Complete!
+          
+          ✅ What was accomplished:
+          - ✓ OpenMediaVault VM created with ID {{ omv_vm_id | default('N/A') }}
+          - ✓ Hardware configured: {{ omv_vm.cpu.cores }} cores, {{ omv_vm.memory }}MB RAM
+          - ✓ Storage configured: {{ omv_vm.disk_size }} main disk
+          - ✓ Network configured: {{ omv_vm.network.bridge }}
+          - ✓ Memory balloon: {{ omv_vm.balloon | ternary('Enabled', 'Disabled') }}
+          - ✓ SATA controller: {{ omv_vm.nas_storage.sata_controller | ternary('Added', 'Skipped') }}
+          {% if omv_vm.nas_storage.passthrough_disks | length > 0 %}
+          - ✓ Disk passthrough: {{ omv_vm.nas_storage.passthrough_disks | join(', ') }}
+          {% endif %}
+          - ✓ OpenMediaVault ISO {{ omv_download.version }} downloaded and attached
+          
+          🖥️  Access Information:
+          - Proxmox Web UI: https://{{ ansible_host }}:8006
+          - VM ID: {{ omv_vm_id | default('N/A') }}
+          - VM Name: {{ omv_vm.hostname }}
+          
+          📋 Installation Steps:
+          1. Open VM console in Proxmox
+          2. Boot from ISO and follow OpenMediaVault installation
+          3. After installation:
+             - Remove ISO from VM configuration
+             - Change boot order to boot from disk
+             - Configure network settings
+             - Access OMV Web UI: http://VM_IP
+             - Default login: admin / openmediavault
+          
+          📖 Documentation:
+          - OpenMediaVault: https://docs.openmediavault.org/
+          - Proxmox: https://pve.proxmox.com/wiki/
+
+    - name: Display disk passthrough information
+      debug:
+        msg: |
+          🗄️ Disk Passthrough Configuration
+          
+          {% if omv_vm.nas_storage.passthrough_disks | length > 0 %}
+          ✅ Configured passthrough disks:
+          {% for disk in omv_vm.nas_storage.passthrough_disks %}
+          - /dev/{{ disk }}
+          {% endfor %}
+          
+          ⚠️  Important Notes:
+          - These disks are now exclusively available to the VM
+          - Host system cannot access them while VM is running
+          - Configure storage within OpenMediaVault after installation
+          - Ensure proper backups before making changes
+          {% else %}
+          ℹ️  No disk passthrough configured.
+          
+          To add disk passthrough later:
+          1. Stop the VM
+          2. Add disks to VM configuration manually:
+             qm set {{ omv_vm_id | default('VM_ID') }} -sata1 /dev/disk/by-id/DISK_ID
+          3. Start the VM and configure in OpenMediaVault
+          {% endif %}
+      when: omv_vm_id is defined
+
+    - name: Display troubleshooting information
+      debug:
+        msg: |
+          🔧 Troubleshooting Information
+          
+          Common Issues and Solutions:
+          
+          1. VM won't start:
+             - Check VM logs: journalctl -u qmeventd
+             - Verify storage availability: pvesm status
+             - Check VM configuration: qm config {{ omv_vm_id | default('VM_ID') }}
+          
+          2. ISO download fails:
+             - Check internet connectivity
+             - Verify firewall settings
+             - Manual download: {{ omv_download.iso_url }}
+          
+          3. Disk passthrough issues:
+             - Verify disk exists: lsblk
+             - Check disk is not mounted: mount | grep DISK
+             - Use disk by-id: ls -la /dev/disk/by-id/
+          
+          4. Network issues:
+             - Verify bridge configuration: ip link show {{ omv_vm.network.bridge }}
+             - Check VM network settings in Proxmox
+             - Verify firewall rules
+          
+          📞 Support:
+          - Check logs in /var/log/ansible-deployment/
+          - Proxmox forum: https://forum.proxmox.com/
+          - OpenMediaVault forum: https://forum.openmediavault.org/

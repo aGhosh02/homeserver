@@ -303,9 +303,10 @@ run_deployment() {
     echo "3) Network configuration only"
     echo "4) GPU passthrough only"
     echo "5) Home Assistant OS only"
-    echo "6) Dry run (simulate changes)"
+    echo "6) OpenMediaVault NAS only"
+    echo "7) Dry run (simulate changes)"
     
-    read -p "Enter choice (1-6): " deploy_choice
+    read -p "Enter choice (1-7): " deploy_choice
     
     case $deploy_choice in
         1)
@@ -329,6 +330,10 @@ run_deployment() {
             make deploy-haos
             ;;
         6)
+            print_info "Deploying OpenMediaVault NAS..."
+            make deploy-omv
+            ;;
+        7)
             print_info "Running deployment simulation..."
             make dry-run
             ;;

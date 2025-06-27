@@ -1,0 +1,90 @@
+---
+# OpenMediaVault ISO download tasks
+
+- name: Create temporary directory for downloads
+  tempfile:
+    state: directory
+    suffix: omv
+  register: temp_dir
+
+- name: Set temporary directory fact
+  set_fact:
+    omv_temp_dir: "{{ temp_dir.path }}"
+
+- name: Set ISO filename and path
+  set_fact:
+    omv_iso_path: "{{ omv_temp_dir }}/{{ omv_download.iso_filename }}"
+
+- name: Check if ISO already exists locally
+  stat:
+    path: "{{ omv_iso_path }}"
+  register: iso_exists
+
+- name: Display download information
+  debug:
+    msg: |
+      📥 OpenMediaVault Download Information:
+      - Version: {{ omv_download.version }}
+      - ISO URL: {{ omv_download.iso_url }}
+      - Local Path: {{ omv_iso_path }}
+      - Temp Directory: {{ omv_temp_dir }}
+      - ISO Exists: {{ iso_exists.stat.exists | default(false) }}
+
+- name: Download OpenMediaVault ISO
+  get_url:
+    url: "{{ omv_download.iso_url }}"
+    dest: "{{ omv_iso_path }}"
+    timeout: "{{ omv_download.timeout | default(600) }}"
+    mode: '0644'
+    validate_certs: yes
+  register: download_result
+  when: not iso_exists.stat.exists
+  retries: 3
+  delay: 10
+
+- name: Verify downloaded ISO file
+  stat:
+    path: "{{ omv_iso_path }}"
+  register: downloaded_iso
+  failed_when: not downloaded_iso.stat.exists
+
+- name: Display download completion
+  debug:
+    msg: |
+      ✅ OpenMediaVault ISO ready
+      📁 File: {{ omv_iso_path }}
+      📊 Size: {{ (downloaded_iso.stat.size / 1024 / 1024) | round(1) }}MB
+      {{ '🔄 Downloaded' if (download_result is defined and download_result.changed) else '♻️  Using existing file' }}
+
+- name: Validate ISO file integrity (basic check)
+  shell: file "{{ omv_iso_path }}"
+  register: iso_file_check
+  changed_when: false
+
+- name: Verify ISO is valid
+  fail:
+    msg: "Downloaded file does not appear to be a valid ISO: {{ iso_file_check.stdout }}"
+  when: "'ISO' not in iso_file_check.stdout"
+
+- name: Display ISO validation success
+  debug:
+    msg: |
+      ✅ ISO validation successful
+      🔍 File type: {{ iso_file_check.stdout }}
+      📦 Ready for VM creation
+
+- name: Copy ISO to Proxmox local storage
+  shell: |
+    cp "{{ omv_iso_path }}" "/var/lib/vz/template/iso/{{ omv_download.iso_filename }}"
+  register: iso_copy_result
+  failed_when: iso_copy_result.rc != 0
+
+- name: Update ISO path for Proxmox storage
+  set_fact:
+    omv_iso_storage_path: "local:iso/{{ omv_download.iso_filename }}"
+
+- name: Display ISO copy success
+  debug:
+    msg: |
+      ✅ ISO copied to Proxmox storage
+      📁 Storage path: {{ omv_iso_storage_path }}
