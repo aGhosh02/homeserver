@@ -1,0 +1,80 @@
+---
+# GPU passthrough validation tasks
+
+- name: Check IOMMU status
+  shell: |
+    if [ -d "/sys/kernel/iommu_groups" ]; then
+      echo "IOMMU_ENABLED"
+      for d in /sys/kernel/iommu_groups/*/devices/*; do
+        n=${d#*/iommu_groups/*}; n=${n%%/*}
+        printf 'Group %s: ' "$n"
+        lspci -nns "${d##*/}"
+      done | grep -E "(VGA|Audio|3D)" | sort -V
+    else
+      echo "IOMMU_DISABLED"
+    fi
+  register: iommu_check
+  changed_when: false
+  failed_when: false
+  tags: ['validate-iommu']
+
+- name: Check VFIO driver status
+  shell: lsmod | grep vfio
+  register: vfio_check
+  changed_when: false
+  failed_when: false
+  tags: ['validate-vfio']
+
+- name: Check GPU driver binding
+  shell: |
+    lspci -nn | grep -iE "(nvidia|geforce|amd.*vga|radeon)" | grep -E "(VGA|Display)" | while read line; do
+      pci_slot=$(echo "$line" | awk '{print $1}')
+      pci_id=$(echo "$line" | grep -o '\[.*:.*\]' | tail -1 | tr -d '[]')
+      driver=$(lspci -k -s "$pci_slot" | grep "Kernel driver in use:" | awk '{print $5}')
+      echo "PCI_ID:$pci_id SLOT:$pci_slot DRIVER:${driver:-UNBOUND}"
+    done
+  register: gpu_binding_check
+  changed_when: false
+  failed_when: false
+  tags: ['validate-binding']
+
+- name: Check blacklisted drivers
+  shell: |
+    {% for driver in gpu_config.blacklist_drivers %}
+    if lsmod | grep -q "^{{ driver }}"; then
+      echo "LOADED:{{ driver }}"
+    else
+      echo "BLACKLISTED:{{ driver }}"
+    fi
+    {% endfor %}
+  register: blacklist_check
+  changed_when: false
+  failed_when: false
+  tags: ['validate-blacklist']
+
+- name: Display validation results
+  debug:
+    msg: |
+      GPU Passthrough Validation Results:
+      
+      IOMMU Status: {{ 'ENABLED' if 'IOMMU_ENABLED' in iommu_check.stdout else 'DISABLED' }}
+      {% if 'IOMMU_ENABLED' in iommu_check.stdout %}
+      IOMMU Groups:
+      {{ iommu_check.stdout_lines[1:] | join('\n') }}
+      {% endif %}
+      
+      VFIO Drivers: {{ 'LOADED' if vfio_check.rc == 0 else 'NOT LOADED' }}
+      {% if vfio_check.rc == 0 %}
+      {{ vfio_check.stdout }}
+      {% endif %}
+      
+      GPU Binding Status:
+      {% for line in gpu_binding_check.stdout_lines %}
+      {{ line }}
+      {% endfor %}
+      
+      Driver Blacklist Status:
+      {% for line in blacklist_check.stdout_lines %}
+      {{ line }}
+      {% endfor %}
+  tags: ['validation-results']

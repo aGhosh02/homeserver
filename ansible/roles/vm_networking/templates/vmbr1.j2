@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# VM Bridge Interface Configuration for Proxmox VE
+
+auto {{ vm_bridge.name }}
+iface {{ vm_bridge.name }} inet static
+    address {{ vm_bridge.address }}
+    netmask {{ vm_bridge.netmask }}
+    bridge_ports {{ vm_bridge.bridge_ports }}
+    bridge_stp {{ vm_bridge.bridge_stp }}
+    bridge_fd {{ vm_bridge.bridge_fd }}
+    bridge_vlan_aware {{ vm_bridge.bridge_vlan_aware }}
+    # Bridge for VM networking with internet access via NAT

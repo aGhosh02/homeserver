@@ -1,0 +1,80 @@
+---
+# Maintenance playbook for routine tasks
+- name: Proxmox Maintenance Tasks
+  hosts: proxmox
+  become: true
+  gather_facts: false
+  
+  vars:
+    maintenance_tasks:
+      update_packages: true
+      clean_logs: true
+      backup_configs: true
+      check_storage: true
+
+  tasks:
+    - name: Update package cache and upgrade
+      apt:
+        update_cache: true
+        upgrade: dist
+        autoremove: true
+        autoclean: true
+      when: maintenance_tasks.update_packages | default(true)
+      tags: ['updates']
+
+    - name: Clean old log files
+      shell: |
+        journalctl --vacuum-time=30d
+        find /var/log -name "*.log.*" -mtime +30 -delete 2>/dev/null || true
+        find /var/log -name "*.gz" -mtime +30 -delete 2>/dev/null || true
+      when: maintenance_tasks.clean_logs | default(true)
+      tags: ['cleanup']
+
+    - name: Backup critical configurations
+      archive:
+        path:
+          - /etc/pve
+          - /etc/network/interfaces.d
+          - /etc/default/grub
+          - /etc/modprobe.d
+        dest: "/root/proxmox-config-backup-{{ ansible_date_time.date }}.tar.gz"
+        format: gz
+      when: maintenance_tasks.backup_configs | default(true)
+      tags: ['backup']
+
+    - name: Check storage usage
+      shell: |
+        echo "=== Storage Usage ==="
+        df -h
+        echo "=== Large Files ==="
+        find /var/log -size +100M -exec ls -lh {} \; 2>/dev/null || true
+        echo "=== PVE Storage ==="
+        pvesm status 2>/dev/null || echo "PVE storage not available"
+      register: storage_check
+      changed_when: false
+      when: maintenance_tasks.check_storage | default(true)
+      tags: ['storage']
+
+    - name: Display storage information
+      debug:
+        var: storage_check.stdout_lines
+      when: 
+        - maintenance_tasks.check_storage | default(true)
+        - storage_check.stdout_lines is defined
+      tags: ['storage']
+
+    - name: Check for system updates
+      shell: |
+        apt list --upgradable 2>/dev/null | wc -l
+      register: updates_available
+      changed_when: false
+      tags: ['updates']
+
+    - name: Display update summary
+      debug:
+        msg: |
+          Maintenance Summary:
+          - Available updates: {{ (updates_available.stdout | int) - 1 }} packages
+          - Last updated: {{ ansible_date_time.date }}
+          - System uptime: {{ ansible_uptime_seconds | int // 86400 }} days
+      tags: ['summary']

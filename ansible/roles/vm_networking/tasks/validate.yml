@@ -1,0 +1,43 @@
+---
+# Network validation tasks
+
+- name: Check if bridge interface exists
+  shell: "ip link show {{ vm_bridge.name }}"
+  register: bridge_check
+  changed_when: false
+  failed_when: false
+  tags: ['validate-bridge']
+
+- name: Verify bridge IP configuration
+  shell: "ip addr show {{ vm_bridge.name }} | grep '{{ vm_bridge.address }}'"
+  register: bridge_ip_check
+  changed_when: false
+  failed_when: false
+  when: bridge_check.rc == 0
+  tags: ['validate-ip']
+
+- name: Check NAT rules
+  shell: "iptables -t nat -L POSTROUTING -n | grep '{{ nat_config.internal_network }}'"
+  register: nat_rules_check
+  changed_when: false
+  failed_when: false
+  when: nat_config.enabled | default(true)
+  tags: ['validate-nat']
+
+- name: Check forward rules
+  shell: "iptables -L FORWARD -n | grep {{ nat_config.internal_interface }}"
+  register: forward_rules_check
+  changed_when: false
+  failed_when: false
+  when: nat_config.enabled | default(true)
+  tags: ['validate-forward']
+
+- name: Display network validation results
+  debug:
+    msg: |
+      Network Validation Results:
+      Bridge Interface: {{ 'OK' if bridge_check.rc == 0 else 'FAILED' }}
+      Bridge IP: {{ 'OK' if bridge_ip_check.rc == 0 else 'FAILED' }}
+      NAT Rules: {{ 'OK' if nat_rules_check.rc == 0 else 'FAILED' }}
+      Forward Rules: {{ 'OK' if forward_rules_check.rc == 0 else 'FAILED' }}
+  tags: ['validation-results']

@@ -1,0 +1,34 @@
+---
+- name: Configure Proxmox VE base system
+  block:
+    - name: Configure system settings
+      import_tasks: system.yml
+      tags: ['system']
+
+    - name: Configure repositories
+      import_tasks: repositories.yml
+      tags: ['repositories']
+
+    - name: Manage packages
+      import_tasks: packages.yml
+      tags: ['packages']
+
+    - name: Configure NTP
+      import_tasks: ntp.yml
+      tags: ['ntp']
+      when: ntp_config.enabled | default(true)
+
+    - name: Configure hardware monitoring
+      import_tasks: hardware.yml
+      tags: ['hardware']
+      when: hardware_monitoring.enabled | default(true)
+
+    - name: Configure kernel
+      import_tasks: kernel.yml
+      tags: ['kernel']
+      
+  rescue:
+    - name: Handle base configuration failure
+      debug:
+        msg: "Proxmox base configuration failed. Check logs for details."
+      tags: ['always']

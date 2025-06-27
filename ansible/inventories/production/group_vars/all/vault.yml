@@ -1,0 +1,30 @@
+# Vault encrypted sensitive variables
+# To encrypt: ansible-vault encrypt_string 'your_password' --name 'vault_ssh_password'
+# To view: ansible-vault view group_vars/all/vault.yml
+# To edit: ansible-vault edit group_vars/all/vault.yml
+
+---
+# SSH Configuration (uncomment and encrypt when using passwords)
+# vault_ssh_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   (your encrypted password here)
+
+# API Keys and Secrets (examples - encrypt actual values)
+# proxmox_api_user: root@pam
+# proxmox_api_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   (your encrypted proxmox password here)
+
+# SSL Certificates paths (if using custom certs)
+# ssl_cert_path: "/etc/ssl/certs/proxmox.crt"
+# ssl_key_path: "/etc/ssl/private/proxmox.key"
+
+# Backup encryption keys
+# backup_encryption_key: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   (your encrypted backup key here)
+
+# Default SSH key paths (adjust for your setup)
+ssh_key_files:
+  private: "{{ playbook_dir }}/../.ssh/id_rsa"
+  public: "{{ playbook_dir }}/../.ssh/id_rsa.pub"

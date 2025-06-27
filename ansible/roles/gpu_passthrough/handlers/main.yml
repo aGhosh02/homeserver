@@ -1,0 +1,32 @@
+---
+# Handlers for gpu_passthrough role
+
+- name: update grub
+  command: update-grub
+  listen: "update grub"
+
+- name: update initramfs
+  command: update-initramfs -u -k all
+  listen: "update initramfs"
+
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+  listen: "reload systemd"
+
+- name: enable gpu binding service
+  systemd:
+    name: gpu-vfio-bind.service
+    enabled: true
+    state: started
+  listen: "enable gpu binding service"
+
+- name: reboot required
+  reboot:
+    msg: "Reboot required after GPU passthrough configuration"
+    connect_timeout: 5
+    reboot_timeout: 600
+    pre_reboot_delay: 5
+    post_reboot_delay: 30
+    test_command: uptime
+  listen: "reboot required"

@@ -1,0 +1,23 @@
+---
+# Requirements for Ansible collections and roles
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+    source: https://galaxy.ansible.com
+  - name: community.general
+    version: ">=7.0.0"
+    source: https://galaxy.ansible.com
+  - name: community.crypto
+    version: ">=2.0.0"
+    source: https://galaxy.ansible.com
+  - name: ansible.utils
+    version: ">=2.0.0"
+    source: https://galaxy.ansible.com
+
+# External roles from Ansible Galaxy (if any)
+roles: []
+  # Uncomment if you want to use external roles
+  # - name: geerlingguy.security
+  #   version: "2.0.1"
+  # - name: geerlingguy.firewall
+  #   version: "2.3.0"

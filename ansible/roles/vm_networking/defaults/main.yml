@@ -1,0 +1,39 @@
+---
+# Default variables for vm_networking role
+
+# VM Bridge Configuration
+vm_bridge:
+  name: vmbr1
+  address: 10.0.100.1
+  netmask: 255.255.255.0
+  network: 10.0.100.0/24
+  gateway: 10.0.200.1
+  bridge_ports: none
+  bridge_stp: off
+  bridge_fd: 0
+  bridge_vlan_aware: yes
+
+# NAT/Masquerade configuration
+nat_config:
+  enabled: true
+  external_interface: vmbr0
+  internal_interface: vmbr1
+  internal_network: 10.0.100.0/24
+
+# Firewall configuration
+firewall_config:
+  enabled: true
+  rules:
+    - name: "Allow VMs to access internet"
+      rule: "ACCEPT"
+      source: "10.0.100.0/24"
+      dest: "any"
+    - name: "Allow external network to access VMs"
+      rule: "ACCEPT"
+      source: "10.0.0.0/16"
+      dest: "10.0.100.0/24"
+
+# Network optimization
+network_optimization:
+  enable_ip_forward: true
+  install_persistent_iptables: true

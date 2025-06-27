@@ -1,0 +1,84 @@
+---
+- name: Configure system basics
+  block:
+    - name: Configure /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        regexp: "^{{ ansible_host }}\\s+"
+        line: "{{ ansible_host }} {{ ansible_hostname }} {{ ansible_hostname }}.{{ domain_name | default('local') }}"
+        state: present
+        backup: true
+        create: true
+      tags: ['hosts']
+
+    - name: Set hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+        use: systemd
+      tags: ['hostname']
+
+    - name: Configure timezone
+      timezone:
+        name: "{{ ntp_config.timezone | default('UTC') }}"
+      when: ntp_config.enabled | default(true)
+      notify: "chrony restart"
+      tags: ['timezone']
+
+    - name: Configure system limits
+      pam_limits:
+        domain: "{{ item.domain }}"
+        limit_type: "{{ item.type }}"
+        limit_item: "{{ item.item }}"
+        value: "{{ item.value }}"
+      loop:
+        - { domain: '*', type: 'soft', item: 'nofile', value: "{{ resource_limits.max_open_files | default(65536) }}" }
+        - { domain: '*', type: 'hard', item: 'nofile', value: "{{ resource_limits.max_open_files | default(65536) }}" }
+        - { domain: '*', type: 'soft', item: 'nproc', value: "{{ resource_limits.max_user_processes | default(32768) }}" }
+        - { domain: '*', type: 'hard', item: 'nproc', value: "{{ resource_limits.max_user_processes | default(32768) }}" }
+      tags: ['limits']
+
+    - name: Configure sysctl parameters for performance
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+        sysctl_file: /etc/sysctl.d/99-proxmox-performance.conf
+      loop:
+        - { name: 'vm.max_map_count', value: "{{ system_performance.vm_max_map_count | default(262144) }}" }
+        - { name: 'fs.file-max', value: "{{ system_performance.fs_file_max | default(1048576) }}" }
+        - { name: 'net.core.rmem_max', value: '134217728' }
+        - { name: 'net.core.wmem_max', value: '134217728' }
+        - { name: 'net.ipv4.tcp_rmem', value: '4096 87380 134217728' }
+        - { name: 'net.ipv4.tcp_wmem', value: '4096 65536 134217728' }
+        - { name: 'net.core.netdev_max_backlog', value: '5000' }
+      when: system_performance.enable_performance_tuning | default(true)
+      tags: ['sysctl', 'performance']
+
+    - name: Disable HA services (single node setup)
+      systemd:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - pve-ha-lrm
+        - pve-ha-crm
+        - corosync
+      ignore_errors: true
+      when: system_config.disable_ha_services | default(true)
+      tags: ['ha']
+
+    - name: Configure logrotate for system logs
+      template:
+        src: logrotate.conf.j2
+        dest: /etc/logrotate.d/proxmox-system
+        mode: '0644'
+        owner: root
+        group: root
+      tags: ['logrotate']
+
+  rescue:
+    - name: System configuration failed
+      fail:
+        msg: "System configuration tasks failed. Check logs for details."
+      tags: ['always']

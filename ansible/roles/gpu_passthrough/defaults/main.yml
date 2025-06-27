@@ -1,0 +1,42 @@
+---
+# Default variables for gpu_passthrough role
+
+# IOMMU Configuration
+iommu_config:
+  # Set to 'intel_iommu=on' for Intel CPUs or 'amd_iommu=on' for AMD CPUs
+  kernel_params: "intel_iommu=on iommu=pt"
+  # Alternative for AMD: "amd_iommu=on iommu=pt"
+
+# GPU Configuration
+gpu_config:
+  # Automatically detect and configure GPU for passthrough
+  auto_detect: true
+  # Manual GPU specification (used if auto_detect is false)
+  pci_ids:
+    - "10de:2204"  # Example: NVIDIA RTX 3080
+    - "10de:1aef"  # Example: NVIDIA Audio device
+  
+  # Driver blacklisting
+  blacklist_drivers:
+    - nouveau
+    - nvidia
+    - nvidia_drm
+    - nvidia_modeset
+    - nvidia_uvm
+    - snd_hda_intel
+  
+  # VFIO driver configuration  
+  vfio_drivers:
+    - vfio
+    - vfio_iommu_type1
+    - vfio_pci
+    - vfio_virqfd
+  
+  # Early VFIO binding
+  early_vfio_binding: true
+
+# Management scripts
+management_scripts:
+  install_gpu_manager: true
+  install_validation_script: true
+  install_binding_service: true

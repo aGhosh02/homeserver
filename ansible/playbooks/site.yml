@@ -1,0 +1,162 @@
+---
+- name: Proxmox VE Complete Setup
+  hosts: proxmox
+  become: true
+  gather_facts: true
+  serial: 1
+  strategy: linear
+  max_fail_percentage: 0
+  vars:
+    # Override role defaults if needed
+    system_update_on_setup: true
+    validate_configuration: true
+
+  pre_tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        timeout: 300
+        delay: 5
+      tags: ['always']
+
+    - name: Set deployment timestamp
+      set_fact:
+        deployment_start_time: "{{ ansible_date_time.iso8601 }}"
+      tags: ['always']
+
+    - name: Gather comprehensive system facts
+      setup:
+        gather_subset: 
+          - '!facter'
+          - '!ohai'
+          - 'all'
+      tags: ['always']
+
+    - name: Create deployment log directory
+      file:
+        path: /var/log/ansible-deployment
+        state: directory
+        mode: '0755'
+      tags: ['always']
+
+    - name: Display setup information
+      debug:
+        msg: |
+          🚀 Starting Proxmox VE setup for: {{ inventory_hostname }}
+          📍 IP Address: {{ ansible_host }}
+          🖥️  OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          🔧 Kernel: {{ ansible_kernel }}
+          🏗️  Architecture: {{ ansible_architecture }}
+          💾 Memory: {{ ansible_memtotal_mb }}MB
+          💽 Storage: {{ ansible_devices | length }} devices detected
+          ⏰ Started: {{ deployment_start_time }}
+      tags: ['info']
+
+  roles:
+    - role: proxmox_base
+      tags: ['base', 'system', 'essential']
+      vars:
+        # Override specific system_config values without replacing the entire dict
+        _system_update_override: "{{ system_update_on_setup }}"
+    
+    - role: vm_networking
+      tags: ['networking', 'vm', 'network']
+      when: 
+        - network_config is defined
+        - network_config.vm_bridge is defined
+    
+    - role: gpu_passthrough
+      tags: ['gpu', 'passthrough']
+      when: gpu_passthrough.enabled | default(false)
+
+  post_tasks:
+    - name: Final system validation
+      block:
+        - name: Check critical services
+          systemd:
+            name: "{{ item }}"
+          register: service_status
+          loop:
+            - pveproxy
+            - pvedaemon
+            - pvestatd
+            - chronyd
+          tags: ['validation']
+
+        - name: Validate network configuration
+          shell: |
+            echo "Network interfaces:"
+            ip addr show | grep -E "^[0-9]+:|inet "
+            echo "Routing table:"
+            ip route show
+            echo "DNS resolution:"
+            nslookup google.com || echo "DNS check failed"
+          register: network_validation
+          changed_when: false
+          when: validate_configuration | default(true)
+          tags: ['validation']
+
+        - name: Display network validation
+          debug:
+            var: network_validation.stdout_lines
+          when: 
+            - validate_configuration | default(true)
+            - network_validation.stdout_lines is defined
+          tags: ['validation']
+
+        - name: Run GPU passthrough validation
+          command: /usr/local/bin/check-gpu-passthrough
+          register: gpu_validation
+          changed_when: false
+          failed_when: false
+          when: 
+            - gpu_passthrough.enabled | default(false)
+            - validate_configuration | default(true)
+          tags: ['validation', 'gpu']
+
+        - name: Display GPU validation
+          debug:
+            var: gpu_validation.stdout_lines
+          when: 
+            - gpu_passthrough.enabled | default(false)
+            - gpu_validation.stdout_lines is defined
+          tags: ['validation', 'gpu']
+
+      rescue:
+        - name: Validation failed
+          debug:
+            msg: "⚠️  Some validation checks failed. Please review the output above."
+          tags: ['validation']
+
+    - name: Display completion message
+      debug:
+        msg: |
+          ✅ Proxmox VE setup completed successfully!
+          
+          📋 Summary of changes:
+          {% if 'base' in ansible_run_tags %}
+          - ✓ Base system configured
+          {% endif %}
+          {% if 'networking' in ansible_run_tags %}
+          - ✓ VM networking configured
+          {% endif %}
+          {% if 'gpu' in ansible_run_tags %}
+          - ✓ GPU passthrough configured
+          {% endif %}
+          
+          🔄 Next steps:
+          {% if hostvars[inventory_hostname].get('ansible_reboot_required', false) %}
+          - ⚠️  Reboot required for kernel/GPU changes
+          {% endif %}
+          - 🌐 Access Proxmox web interface: https://{{ ansible_host }}:8006
+          - 🔍 Check system status: systemctl status pve*
+          {% if network_config.vm_bridge is defined %}
+          - 🔗 VM network available: {{ network_config.vm_bridge.network }}
+          {% endif %}
+          {% if gpu_passthrough.enabled | default(false) %}
+          - 🎮 GPU passthrough ready for VM configuration
+          - 🔧 Management tools: gpu-passthrough-manager, check-gpu-passthrough
+          {% endif %}
+          
+          📖 Documentation available in docs/ directory
+          
+      tags: ['info']

@@ -1,0 +1,43 @@
+# Logrotate configuration for Proxmox system logs
+# Managed by Ansible - do not edit manually
+
+/var/log/daemon.log
+/var/log/kern.log
+/var/log/lpr.log
+/var/log/mail.log
+/var/log/user.log
+/var/log/mail.info
+/var/log/mail.warn
+/var/log/mail.err
+/var/log/news.crit
+/var/log/news.err
+/var/log/news.notice
+/var/log/debug
+/var/log/messages
+{
+    rotate {{ monitoring.log_retention_days | default(30) }}
+    daily
+    missingok
+    notifempty
+    delaycompress
+    compress
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate
+    endscript
+}
+
+# Proxmox specific logs
+/var/log/pve-firewall.log
+/var/log/pveproxy/access.log
+{
+    rotate {{ monitoring.log_retention_days | default(30) }}
+    daily
+    missingok
+    notifempty
+    delaycompress
+    compress
+    create 640 www-data www-data
+    postrotate
+        systemctl reload pveproxy > /dev/null 2>&1 || true
+    endscript
+}

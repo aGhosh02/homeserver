@@ -1,0 +1,51 @@
+---
+# Hardware monitoring and sensor configuration tasks
+
+- name: Install hardware monitoring packages
+  apt:
+    name: "{{ hardware_monitoring.packages }}"
+    state: present
+    update_cache: true
+  when: hardware_monitoring.enabled | default(true)
+  tags: ['hw-packages']
+
+- name: Auto-detect hardware sensors
+  command: sensors-detect --auto
+  register: sensors_detect_result
+  changed_when: false
+  failed_when: false
+  when: hardware_monitoring.auto_detect_sensors | default(true)
+  tags: ['sensors-detect']
+
+- name: Load detected sensor modules
+  systemd:
+    name: systemd-modules-load
+    state: restarted
+  when: 
+    - hardware_monitoring.auto_detect_sensors | default(true)
+    - sensors_detect_result.rc is defined
+    - sensors_detect_result.rc == 0
+  tags: ['sensors-load']
+
+- name: Enable and start lm-sensors service
+  systemd:
+    name: lm-sensors
+    enabled: true
+    state: started
+  when: hardware_monitoring.enabled | default(true)
+  tags: ['sensors-service']
+
+- name: Install smartmontools for disk monitoring
+  apt:
+    name: smartmontools
+    state: present
+  when: hardware_monitoring.disk_monitoring | default(true)
+  tags: ['disk-monitoring']
+
+- name: Enable and start smartd service
+  systemd:
+    name: smartd
+    enabled: true
+    state: started
+  when: hardware_monitoring.disk_monitoring | default(true)  
+  tags: ['smartd-service']

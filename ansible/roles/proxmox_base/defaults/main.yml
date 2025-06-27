@@ -1,0 +1,76 @@
+---
+# Role defaults for proxmox_base
+domain_name: "{{ inventory_hostname }}.local"
+
+# System configuration
+system_config:
+  update_packages: "{{ _system_update_override | default(true) }}"
+  install_essential_packages: true
+  remove_enterprise_repos: true
+  disable_subscription_nag: true
+  install_pve_kernel: true
+  disable_ha_services: true
+  essential_packages:
+    - curl
+    - wget
+    - vim
+    - htop
+    - iotop
+    - tmux
+    - git
+    - rsync
+    - unzip
+    - dnsutils
+    - net-tools
+    - pciutils
+    - lshw
+    - chrony
+    - bridge-utils
+    - iptables-persistent
+    - netfilter-persistent
+    - proxmox-ve
+    - pve-headers
+    - open-iscsi
+    - qemu-guest-agent
+    - spice-vdagent
+    - ifenslave
+    - smartmontools
+    - lm-sensors
+    - ethtool
+    - rsync
+    - rclone
+    - borgbackup
+
+# NTP Configuration
+ntp_config:
+  enabled: true
+  servers:
+    - pool.ntp.org
+    - time.cloudflare.com  
+    - time.google.com
+  timezone: "UTC"
+
+# Hardware monitoring
+hardware_monitoring:
+  enabled: true
+  auto_detect_sensors: true
+  disk_monitoring: true
+  packages:
+    - lm-sensors
+    - smartmontools
+    - ethtool
+
+# Kernel configuration
+kernel_config:
+  install_pve_kernel: true
+  pve_packages:
+    - pve-kernel-6.2
+    - pve-headers
+  cmdline_params:
+    - "elevator=noop"
+  modules: []
+  sysctl_params:
+    - name: vm.swappiness
+      value: "10"
+    - name: net.core.default_qdisc
+      value: "fq"

@@ -1,0 +1,64 @@
+---
+- name: Check if systemd-timesyncd exists
+  systemd:
+    name: systemd-timesyncd
+  register: timesyncd_service
+  failed_when: false
+  tags: ['timesyncd']
+
+- name: Disable systemd-timesyncd (conflicts with chrony)
+  systemd:
+    name: systemd-timesyncd
+    enabled: false
+    state: stopped
+  when: timesyncd_service.status is defined
+  ignore_errors: true
+  tags: ['timesyncd']
+
+- name: Configure chrony NTP service
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    backup: true
+    owner: root
+    group: root
+    mode: '0644'
+  notify: "chrony restart"
+  tags: ['chrony-config']
+
+- name: Enable and start chrony service
+  systemd:
+    name: chrony
+    enabled: true
+    state: started
+  tags: ['chrony-service']
+
+- name: Wait for time synchronization
+  command: chronyc waitsync 60
+  register: chrony_sync
+  changed_when: false
+  failed_when: false
+  tags: ['chrony-sync']
+
+- name: Display time synchronization status
+  debug:
+    msg: "Time synchronization status: {{ chrony_sync.stdout if chrony_sync.stdout else 'Check failed or timed out' }}"
+  tags: ['chrony-status']
+
+- name: Get current time and synchronization info
+  shell: |
+    echo "Current time: $(date)"
+    echo "Chrony sources:"
+    chronyc sources -v
+    echo "Chrony tracking:"
+    chronyc tracking
+  register: time_info
+  changed_when: false
+  failed_when: false
+  tags: ['time-info']
+
+- name: Display time synchronization details
+  debug:
+    var: time_info.stdout_lines
+  when: time_info.stdout_lines is defined
+  tags: ['time-details']

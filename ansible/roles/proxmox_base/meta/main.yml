@@ -1,0 +1,37 @@
+---
+galaxy_info:
+  role_name: proxmox_base
+  namespace: homeserver
+  author: Arghya
+  description: Comprehensive base configuration for Proxmox VE hosts with security hardening and optimization
+  company: Personal
+  license: MIT
+  
+  min_ansible_version: "2.15"
+  
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - "20.04"
+        - "22.04"
+        - "24.04"
+  
+  galaxy_tags:
+    - proxmox
+    - virtualization
+    - system
+    - configuration
+    - security
+    - monitoring
+    - optimization
+
+dependencies: 
+  - role: common
+    when: validate_dependencies | default(true)
+
+allow_duplicates: false

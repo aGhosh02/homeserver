@@ -1,0 +1,35 @@
+---
+# Common validation tasks for all roles
+# This file contains reusable validation tasks
+
+- name: Validate required variables are defined
+  fail:
+    msg: "Required variable '{{ item }}' is not defined"
+  when: vars[item] is not defined
+  loop: "{{ required_variables | default([]) }}"
+  tags: ['validation']
+
+- name: Validate Ansible version compatibility
+  fail:
+    msg: |
+      This playbook requires Ansible 2.12 or higher.
+      Current version: {{ ansible_version.full }}
+  when: ansible_version.full is version('2.12', '<')
+  tags: ['validation']
+
+- name: Validate Python version
+  fail:
+    msg: |
+      This playbook requires Python 3.8 or higher.
+      Current version: {{ ansible_python_version }}
+  when: ansible_python_version is version('3.8', '<')
+  tags: ['validation']
+
+- name: Check for conflicting variables
+  fail:
+    msg: "Variables {{ item.var1 }} and {{ item.var2 }} cannot both be defined"
+  when: 
+    - vars[item.var1] is defined
+    - vars[item.var2] is defined
+  loop: "{{ conflicting_variables | default([]) }}"
+  tags: ['validation']

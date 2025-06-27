@@ -1,0 +1,37 @@
+# Ansible managed iptables rules for VM networking
+# {{ ansible_managed }}
+
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+# NAT rules for VM internet access
+{% if nat_config.enabled | default(true) %}
+-A POSTROUTING -s {{ nat_config.internal_network }} -o {{ nat_config.external_interface }} -j MASQUERADE
+{% endif %}
+
+COMMIT
+
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# Forward rules for VM traffic
+{% if nat_config.enabled | default(true) %}
+-A FORWARD -i {{ nat_config.internal_interface }} -o {{ nat_config.external_interface }} -j ACCEPT
+-A FORWARD -i {{ nat_config.external_interface }} -o {{ nat_config.internal_interface }} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+{% endif %}
+
+# Custom firewall rules
+{% for rule in firewall_config.rules | default([]) %}
+{% if rule.dest == 'any' %}
+-A INPUT -s {{ rule.source }} -j {{ rule.rule }}
+{% else %}
+-A FORWARD -s {{ rule.source }} -d {{ rule.dest }} -j {{ rule.rule }}
+{% endif %}
+{% endfor %}
+
+COMMIT

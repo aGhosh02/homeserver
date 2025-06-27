@@ -1,0 +1,57 @@
+---
+# Quick validation playbook to check system status
+- name: Proxmox System Validation
+  hosts: proxmox
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Check Proxmox services
+      systemd:
+        name: "{{ item }}"
+      register: service_status
+      loop:
+        - pveproxy
+        - pvedaemon
+        - pvestatd
+        - chronyd
+      tags: ['services']
+
+    - name: Display service status
+      debug:
+        msg: "{{ item.item }}: {{ item.status.ActiveState }}"
+      loop: "{{ service_status.results }}"
+      tags: ['services']
+
+    - name: Check system resources
+      shell: |
+        echo "=== System Resources ==="
+        echo "Memory: $(free -h | grep '^Mem:' | awk '{print $3"/"$2}')"
+        echo "Disk: $(df -h / | tail -1 | awk '{print $3"/"$2" ("$5" used)"}')"
+        echo "Load: $(uptime | awk -F'load average:' '{print $2}')"
+        echo "=== Network ==="
+        ip addr show | grep -E "^[0-9]+:|inet " | head -10
+      register: system_resources
+      changed_when: false
+      tags: ['resources']
+
+    - name: Display system resources
+      debug:
+        var: system_resources.stdout_lines
+      tags: ['resources']
+
+    - name: Run GPU validation if enabled
+      command: /usr/local/bin/check-gpu-passthrough
+      register: gpu_status
+      changed_when: false
+      failed_when: false
+      when: gpu_passthrough.enabled | default(false)
+      tags: ['gpu']
+
+    - name: Display GPU status
+      debug:
+        var: gpu_status.stdout_lines
+      when: 
+        - gpu_passthrough.enabled | default(false)
+        - gpu_status.stdout_lines is defined
+      tags: ['gpu']

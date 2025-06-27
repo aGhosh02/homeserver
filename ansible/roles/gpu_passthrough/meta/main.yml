@@ -1,0 +1,31 @@
+---
+galaxy_info:
+  role_name: gpu_passthrough
+  namespace: homeserver
+  author: Arghya
+  description: GPU passthrough configuration for Proxmox VE
+  company: Personal
+  license: MIT
+  
+  min_ansible_version: "2.12"
+  
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+    - name: Ubuntu
+      versions:
+        - "20.04"
+        - "22.04"
+  
+  galaxy_tags:
+    - proxmox
+    - gpu
+    - passthrough
+    - vfio
+    - gaming
+
+dependencies: []
+
+allow_duplicates: false

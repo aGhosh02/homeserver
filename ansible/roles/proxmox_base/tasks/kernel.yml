@@ -1,0 +1,50 @@
+---
+# Kernel configuration and optimization tasks
+
+- name: Check if PVE kernel is already installed
+  shell: uname -r | grep -q pve
+  register: pve_kernel_check
+  changed_when: false
+  failed_when: false
+  tags: ['kernel-check']
+
+- name: Install Proxmox VE kernel packages
+  apt:
+    name: "{{ kernel_config.pve_packages }}"
+    state: present
+    update_cache: true
+  when: 
+    - kernel_config.install_pve_kernel | default(true)
+    - pve_kernel_check.rc != 0
+  notify: "system reboot"
+  tags: ['pve-kernel']
+
+- name: Configure kernel parameters in GRUB
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX='
+    line: 'GRUB_CMDLINE_LINUX="{{ kernel_config.cmdline_params | join(" ") }}"'
+    backup: true
+  notify: "grub update"
+  when: kernel_config.cmdline_params is defined
+  tags: ['kernel-params']
+
+- name: Configure kernel modules to load at boot
+  lineinfile:
+    path: /etc/modules
+    line: "{{ item }}"
+    create: true
+  loop: "{{ kernel_config.modules | default([]) }}"
+  notify: "initramfs update"
+  when: kernel_config.modules is defined
+  tags: ['kernel-modules']
+
+- name: Set kernel parameters via sysctl
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop: "{{ kernel_config.sysctl_params | default([]) }}"
+  when: kernel_config.sysctl_params is defined
+  tags: ['sysctl']

@@ -1,0 +1,51 @@
+# Ansible specific
+*.retry
+.ansible/
+ansible.log
+/tmp/ansible.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+.env
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+.tmp/
+temp/
+
+# Sensitive files (example - adjust as needed)
+# inventories/*/host_vars/*/vault.yml
+# inventories/*/group_vars/*/vault.yml
+
+# Facts cache
+/tmp/facts/
+
+# Test results
+test-results/
+.pytest_cache/

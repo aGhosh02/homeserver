@@ -1,0 +1,37 @@
+---
+# Proxmox Group Variables - Override defaults here
+# This file contains all common configurations for Proxmox hosts
+
+# Performance Tuning
+system_performance:
+  enable_performance_tuning: true
+  vm_max_map_count: 262144
+  fs_file_max: 1048576
+  
+# System Update Strategy
+update_strategy:
+  auto_reboot: false
+  reboot_required_file: /var/run/reboot-required
+  update_cache_valid_time: 3600
+
+# Backup Configuration
+backup_config:
+  enable_config_backup: true
+  backup_location: /var/backups/ansible
+  
+# Monitoring and Logging
+monitoring:
+  enable_system_monitoring: true
+  log_retention_days: 30
+  enable_metrics_collection: true
+  
+# Resource Limits and Quotas
+resource_limits:
+  max_user_processes: 32768
+  max_open_files: 65536
+  
+# Maintenance Schedule
+maintenance_schedule:
+  enable_automatic_cleanup: true
+  cleanup_frequency: weekly
+  update_frequency: monthly

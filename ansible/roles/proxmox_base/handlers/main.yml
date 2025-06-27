@@ -1,0 +1,44 @@
+---
+# Handlers for proxmox_base role
+
+- name: update apt cache
+  apt:
+    update_cache: true
+  listen: "apt cache"
+
+- name: restart chrony
+  systemd:
+    name: chrony
+    state: restarted
+    daemon_reload: true
+  listen: "chrony restart"
+
+- name: update grub
+  command: update-grub
+  listen: "grub update"
+
+- name: update initramfs
+  command: update-initramfs -u -k all
+  listen: "initramfs update"
+
+- name: reboot required
+  reboot:
+    msg: "Reboot required after system changes"
+    connect_timeout: 5
+    reboot_timeout: 600
+    pre_reboot_delay: 5
+    post_reboot_delay: 30
+    test_command: uptime
+  listen: "system reboot"
+
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+  listen: "systemd reload"
+
+- name: reinstall proxmox widget toolkit
+  apt:
+    name: proxmox-widget-toolkit
+    state: present
+    force: true
+  listen: "widget toolkit"

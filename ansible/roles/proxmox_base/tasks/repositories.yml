@@ -1,0 +1,55 @@
+---
+- name: Remove enterprise repositories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/pve-enterprise.list
+    - /etc/apt/sources.list.d/ceph.list
+  when: system_config.remove_enterprise_repos | default(true)
+  notify: "apt cache"
+  tags: ['enterprise-repos']
+
+- name: Add no-subscription repository
+  apt_repository:
+    repo: "deb http://download.proxmox.com/debian/pve {{ ansible_distribution_release }} pve-no-subscription"
+    state: present
+    filename: pve-no-subscription
+  notify: "apt cache"
+  tags: ['no-subscription-repo']
+
+- name: Check if subscription nag script already exists
+  stat:
+    path: /etc/apt/apt.conf.d/no-nag-script
+  register: nag_script_exists
+  when: system_config.disable_subscription_nag | default(true)
+  tags: ['subscription-nag']
+
+- name: Create persistent subscription nag removal script
+  copy:
+    content: |
+      # Automatically remove subscription warnings from Proxmox VE UI
+      # This script runs after package updates to maintain the fix
+      DPkg::Post-Invoke { 
+        "if [ -f /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js ]; then "
+        "sed -i.bak 's/if (data.status.*{/if (false) {/' /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js 2>/dev/null; "
+        "fi"; 
+      };
+    dest: /etc/apt/apt.conf.d/99-pve-no-subscription-nag
+    mode: '0644'
+    backup: true
+  when: 
+    - system_config.disable_subscription_nag | default(true)
+    - not nag_script_exists.stat.exists
+  notify: "widget toolkit"
+  tags: ['subscription-nag']
+
+- name: Apply subscription nag removal immediately
+  replace:
+    path: /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+    regexp: 'if\s*\(\s*data\.status.*\{'
+    replace: 'if (false) {'
+    backup: true
+  ignore_errors: true
+  when: system_config.disable_subscription_nag | default(true)
+  tags: ['subscription-nag']

@@ -1,0 +1,159 @@
+---
+# Main tasks for gpu_passthrough role
+
+- name: Check if GPU passthrough is enabled
+  debug:
+    msg: "GPU Passthrough configuration starting..."
+  tags: ['gpu-info']
+
+- name: Auto-detect GPU PCI IDs for passthrough
+  shell: |
+    lspci -nn | grep -E "(VGA|Audio|3D)" | grep -E "(NVIDIA|AMD|Intel)" | awk '{print $1}' | while read pci_slot; do
+      pci_id=$(lspci -n -s $pci_slot | awk '{print $3}')
+      echo "$pci_slot:$pci_id"
+    done
+  register: detected_gpu_pci_ids
+  changed_when: false
+  when: gpu_config.auto_detect | default(true)
+  tags: ['gpu-detect']
+
+- name: Display detected GPU devices
+  debug:
+    msg: "Detected GPU devices: {{ detected_gpu_pci_ids.stdout_lines }}"
+  when: 
+    - gpu_config.auto_detect | default(true)
+    - detected_gpu_pci_ids.stdout_lines is defined
+  tags: ['gpu-info']
+
+- name: Extract PCI IDs from detected devices
+  set_fact:
+    detected_pci_ids: "{{ detected_gpu_pci_ids.stdout_lines | map('regex_replace', '^.*:(.*)$', '\\1') | list }}"
+  when: 
+    - gpu_config.auto_detect | default(true)
+    - detected_gpu_pci_ids.stdout_lines is defined
+  tags: ['gpu-detect']
+
+- name: Set PCI IDs for configuration
+  set_fact:
+    configured_pci_ids: "{{ detected_pci_ids | default(gpu_config.pci_ids) }}"
+  tags: ['gpu-config']
+
+- name: Configure GRUB for GPU passthrough
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX='
+    line: 'GRUB_CMDLINE_LINUX="{{ iommu_config.kernel_params }}{% if gpu_config.early_vfio_binding %} vfio-pci.ids={{ configured_pci_ids | join(",") }}{% endif %}"'
+    backup: true
+  notify: 
+    - "update grub"
+    - "reboot required"
+  tags: ['grub-config']
+
+- name: Add VFIO modules to load at boot
+  lineinfile:
+    path: /etc/modules
+    line: "{{ item }}"
+    create: true
+  loop: "{{ gpu_config.vfio_drivers }}"
+  notify: "update initramfs"
+  tags: ['vfio-modules']
+
+- name: Create GPU driver blacklist configuration
+  blockinfile:
+    path: /etc/modprobe.d/blacklist-gpu.conf
+    create: true
+    block: |
+      # Blacklist GPU drivers for passthrough
+      {% for driver in gpu_config.blacklist_drivers %}
+      blacklist {{ driver }}
+      {% endfor %}
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - GPU BLACKLIST"
+  notify: "update initramfs"
+  tags: ['blacklist-drivers']
+
+- name: Create VFIO configuration
+  blockinfile:
+    path: /etc/modprobe.d/vfio.conf
+    create: true
+    block: |
+      # VFIO PCI device binding for GPU passthrough
+      options vfio-pci ids={{ configured_pci_ids | join(",") }}
+      {% if gpu_config.early_vfio_binding %}
+      # Enable early VFIO binding
+      softdep nouveau pre: vfio-pci
+      softdep nvidia pre: vfio-pci
+      softdep amdgpu pre: vfio-pci
+      softdep radeon pre: vfio-pci
+      {% endif %}
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - VFIO CONFIG"
+  notify: "update initramfs"
+  tags: ['vfio-config']
+
+- name: Create additional driver blacklist configuration
+  blockinfile:
+    path: /etc/modprobe.d/nvidia-blacklist.conf
+    create: true
+    block: |
+      # Additional driver blacklisting for GPU passthrough
+      install nvidia /bin/false
+      install nvidia-drm /bin/false
+      install nvidia-modeset /bin/false
+      install nvidia-uvm /bin/false
+      install nouveau /bin/false
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - DRIVER BLACKLIST"
+  notify: "update initramfs"
+  tags: ['additional-blacklist']
+
+- name: Remove conflicting GPU packages
+  apt:
+    name:
+      - nvidia-driver-*
+      - nvidia-kernel-*
+      - nvidia-dkms-*
+      - xserver-xorg-video-nvidia
+    state: absent
+    autoremove: true
+  ignore_errors: true
+  tags: ['remove-drivers']
+
+- name: Install GPU management scripts
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode }}"
+    owner: root
+    group: root
+  loop:
+    - src: gpu-passthrough-manager.sh
+      dest: /usr/local/bin/gpu-passthrough-manager
+      mode: '0755'
+    - src: fix-gpu-binding.sh
+      dest: /usr/local/bin/fix-gpu-binding
+      mode: '0755'
+  when: management_scripts.install_gpu_manager | default(true)
+  tags: ['management-scripts']
+
+- name: Create GPU validation script
+  template:
+    src: gpu-validation.sh.j2
+    dest: /usr/local/bin/check-gpu-passthrough
+    mode: '0755'
+    owner: root
+    group: root
+  when: management_scripts.install_validation_script | default(true)
+  tags: ['validation-script']
+
+- name: Create systemd service for GPU binding
+  template:
+    src: gpu-vfio-bind.service.j2
+    dest: /etc/systemd/system/gpu-vfio-bind.service
+    mode: '0644'
+  notify: 
+    - "reload systemd"
+    - "enable gpu binding service"
+  when: management_scripts.install_binding_service | default(true)
+  tags: ['binding-service']
+
+- name: Validate GPU passthrough configuration
+  include_tasks: validate.yml
+  tags: ['validate']

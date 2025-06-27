@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Bind GPU to VFIO for passthrough
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'sleep 5; {% for pci_id in configured_pci_ids | default([]) %}pci_slots=$(lspci -n | grep "{{ pci_id }}" | awk "{print \$1}"); for pci_slot in $pci_slots; do current_driver=$(lspci -k -s "$pci_slot" | grep "Kernel driver in use:" | awk "{print \$5}"); if [ "$current_driver" != "vfio-pci" ] && [ -n "$current_driver" ]; then echo "$pci_slot" > "/sys/bus/pci/drivers/$current_driver/unbind" 2>/dev/null || true; sleep 1; fi; if [ "$current_driver" != "vfio-pci" ]; then echo "{{ pci_id }}" > /sys/bus/pci/drivers/vfio-pci/new_id 2>/dev/null || true; echo "$pci_slot" > /sys/bus/pci/drivers/vfio-pci/bind 2>/dev/null || true; fi; done; {% endfor %}'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

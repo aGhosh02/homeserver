@@ -1,0 +1,75 @@
+---
+# Main tasks for vm_networking role
+
+- name: Install networking packages
+  apt:
+    name: "{{ networking_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  vars:
+    networking_packages:
+      - bridge-utils
+      - iptables-persistent
+      - netfilter-persistent
+      - iptables
+  tags: ['network-packages']
+
+- name: Configure VM bridge interface
+  template:
+    src: vmbr1.j2
+    dest: "/etc/network/interfaces.d/{{ vm_bridge.name }}"
+    backup: true
+    owner: root
+    group: root
+    mode: '0644'
+  notify: 
+    - "restart networking"
+    - "wait for network"
+  tags: ['bridge-config']
+
+- name: Enable IP forwarding for NAT
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-vm-networking.conf
+  tags: ['ip-forward']
+
+- name: Configure iptables rules for VM networking
+  block:
+    - name: Create iptables rules file
+      template:
+        src: iptables-rules.j2
+        dest: /etc/iptables/rules.v4.vm-network
+        backup: true
+        mode: '0644'
+      register: iptables_rules
+      
+    - name: Apply iptables rules
+      shell: |
+        iptables-restore --noflush < /etc/iptables/rules.v4.vm-network
+      when: iptables_rules.changed
+      notify: "save iptables"
+      
+  when: nat_config.enabled | default(true)
+  tags: ['iptables-rules']
+
+- name: Ensure bridge interface is up
+  command: "ip link set {{ vm_bridge.name }} up"
+  register: bridge_up_result
+  changed_when: bridge_up_result.rc == 0
+  failed_when: false
+  tags: ['bring-up-bridge']
+
+- name: Configure bridge IP if not already set
+  command: "ip addr add {{ vm_bridge.address }}/{{ vm_bridge.netmask | ipaddr('prefix') }} dev {{ vm_bridge.name }}"
+  register: bridge_ip_result
+  changed_when: bridge_ip_result.rc == 0
+  failed_when: false
+  tags: ['bridge-ip']
+
+- name: Validate network configuration
+  import_tasks: validate.yml
+  tags: ['validate']
