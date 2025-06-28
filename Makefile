@@ -54,6 +54,13 @@ help: ## Show this help message
 	@echo "  • $(WHITE)make deploy-docker-lxc$(RESET) - Deploy Docker container platform"
 	@echo "  • $(WHITE)make docker-lxc-status CONTAINER_ID=200$(RESET) - Check container status"
 	@echo ""
+	@echo "$(YELLOW)🎮 Windows Gaming VM:$(RESET)"
+	@echo "  • $(WHITE)make deploy-windows-gaming$(RESET) - Deploy Windows Gaming VM"
+	@echo "  • $(WHITE)make windows-gaming-status VM_ID=300$(RESET) - Check VM status"
+	@echo "  • $(WHITE)make windows-gaming-console VM_ID=300$(RESET) - Connect to VM console"
+	@echo "  • $(WHITE)make find-gpu-pci-ids$(RESET) - Find GPU PCI IDs"
+	@echo "  • $(WHITE)make check-gpu-passthrough$(RESET) - Check GPU passthrough status"
+	@echo ""
 
 info: ## Show project information
 	@echo "$(CYAN)$(BOLD)📊 Project Information$(RESET)"
@@ -152,6 +159,7 @@ syntax-check: ## Check syntax of all playbooks
 	cd ansible && ansible-playbook playbooks/deploy-haos.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/deploy-omv.yml --syntax-check
 	cd ansible && ansible-playbook playbooks/deploy-docker-lxc.yml --syntax-check
+	cd ansible && ansible-playbook playbooks/deploy-windows-gaming.yml --syntax-check
 
 inventory: ## Show inventory information
 	@echo "📋 Inventory information:"
@@ -462,6 +470,7 @@ help-advanced: ## Show advanced usage examples
 	@echo "  $(GREEN)make deploy-haos$(RESET)            - Deploy Home Assistant OS"
 	@echo "  $(GREEN)make deploy-omv$(RESET)             - Deploy OpenMediaVault NAS"
 	@echo "  $(GREEN)make deploy-docker-lxc$(RESET)      - Deploy Docker LXC container"
+	@echo "  $(GREEN)make deploy-windows-gaming$(RESET)  - Deploy Windows Gaming VM"
 	@echo "  $(GREEN)make deploy-docker-lxc-custom HOSTNAME=my-docker MEMORY=32768$(RESET)"
 	@echo "                                 - Deploy with custom settings"
 	@echo ""
@@ -470,6 +479,14 @@ help-advanced: ## Show advanced usage examples
 	@echo "  $(GREEN)make docker-lxc-enter CONTAINER_ID=200$(RESET)      - Enter container"
 	@echo "  $(GREEN)make docker-lxc-ps CONTAINER_ID=200$(RESET)         - List Docker containers"
 	@echo "  $(GREEN)make docker-lxc-samples-start CONTAINER_ID=200$(RESET) - Start sample services"
+	@echo ""
+	@echo "$(WHITE)Windows Gaming VM Management:$(RESET)"
+	@echo "  $(GREEN)make windows-gaming-status VM_ID=300$(RESET)       - VM status and config"
+	@echo "  $(GREEN)make windows-gaming-start VM_ID=300$(RESET)        - Start gaming VM"
+	@echo "  $(GREEN)make windows-gaming-console VM_ID=300$(RESET)      - Connect to VM console"
+	@echo "  $(GREEN)make find-gpu-pci-ids$(RESET)                      - Find RTX 2080 Ti PCI IDs"
+	@echo "  $(GREEN)make check-gpu-passthrough$(RESET)                 - Check GPU passthrough status"
+	@echo "  $(GREEN)make debug-storage$(RESET)                         - Debug storage configuration"
 	@echo ""
 	@echo "$(WHITE)Maintenance Tasks:$(RESET)"
 	@echo "  $(GREEN)make upgrade$(RESET)               - System updates"
@@ -526,3 +543,132 @@ help-docker-lxc: ## Show Docker LXC specific help and examples
 	@echo ""
 	@echo "$(YELLOW)📖 Documentation: $(RESET)docs/DOCKER_LXC_DEPLOYMENT.md"
 	@echo ""
+
+help-windows-gaming: ## Show Windows Gaming VM deployment examples
+	@echo "$(MAGENTA)$(BOLD)🎮 Windows Gaming VM Deployment Examples$(RESET)"
+	@echo ""
+	@echo "$(WHITE)Quick Start:$(RESET)"
+	@echo "  1. $(GREEN)make find-gpu-pci-ids$(RESET)                    - Find RTX 2080 Ti PCI IDs"
+	@echo "  2. $(GREEN)make deploy-windows-gaming-auto$(RESET)          - Auto-deploy with detection"
+	@echo "  3. $(GREEN)make windows-gaming-status VM_ID=300$(RESET)     - Check deployment status"
+	@echo ""
+	@echo "$(WHITE)Manual Deployment:$(RESET)"
+	@echo "  $(GREEN)make deploy-windows-gaming$(RESET)                 - Deploy with default config"
+	@echo "  $(GREEN)make deploy-windows-gaming-check$(RESET)          - Dry-run deployment"
+	@echo "  $(GREEN)make deploy-windows-gaming-force$(RESET)          - Force deploy (overwrite existing)"
+	@echo ""
+	@echo "$(WHITE)Custom Configuration:$(RESET)"
+	@echo "  $(GREEN)make deploy-windows-gaming-custom GPU_PCI_ID=01:00.0 AUDIO_PCI_ID=01:00.1$(RESET)"
+	@echo "  $(GREEN)make deploy-windows-gaming-custom MEMORY=65536 CORES=12$(RESET) - More resources"
+	@echo "  $(GREEN)make deploy-windows-gaming-custom HOSTNAME=gaming-rig$(RESET) - Custom name"
+	@echo "  $(GREEN)make deploy-windows-gaming-custom STORAGE_LOCATION=local-lvm$(RESET) - Specific storage"
+	@echo ""
+	@echo "$(WHITE)VM Management:$(RESET)"
+	@echo "  $(GREEN)make windows-gaming-start VM_ID=300$(RESET)       - Start VM"
+	@echo "  $(GREEN)make windows-gaming-stop VM_ID=300$(RESET)        - Stop VM"
+	@echo "  $(GREEN)make windows-gaming-restart VM_ID=300$(RESET)     - Restart VM"
+	@echo "  $(GREEN)make windows-gaming-console VM_ID=300$(RESET)     - Connect to console"
+	@echo ""
+	@echo "$(WHITE)GPU Passthrough Utilities:$(RESET)"
+	@echo "  $(GREEN)make check-gpu-passthrough$(RESET)                - Check IOMMU/VFIO status"
+	@echo "  $(GREEN)make find-gpu-pci-ids$(RESET)                     - Auto-detect RTX 2080 Ti"
+	@echo "  $(GREEN)make debug-storage$(RESET)                        - Debug storage configuration"
+	@echo ""
+	@echo "$(YELLOW)📋 Complete Workflow:$(RESET)"
+	@echo "  1. $(WHITE)Enable IOMMU in BIOS (Intel VT-d/AMD-Vi)$(RESET)"
+	@echo "  2. $(WHITE)Add kernel parameters: intel_iommu=on iommu=pt$(RESET)"
+	@echo "  3. $(WHITE)Blacklist GPU drivers and reboot$(RESET)"
+	@echo "  4. $(WHITE)make find-gpu-pci-ids$(RESET)                  - Find PCI IDs"
+	@echo "  5. $(WHITE)make deploy-windows-gaming-auto$(RESET)         - Deploy VM"
+	@echo "  6. $(WHITE)make windows-gaming-start VM_ID=300$(RESET)    - Start VM"
+	@echo "  7. $(WHITE)Connect monitor to RTX 2080 Ti and install Windows$(RESET)"
+	@echo "  8. $(WHITE)Install VirtIO drivers and NVIDIA drivers$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)🎯 Specifications:$(RESET)"
+	@echo "  • $(WHITE)CPU:$(RESET) 8 cores (host type, pinned 0-7)"
+	@echo "  • $(WHITE)RAM:$(RESET) 32GB dedicated"
+	@echo "  • $(WHITE)GPU:$(RESET) RTX 2080 Ti + HDMI Audio passthrough"
+	@echo "  • $(WHITE)OS:$(RESET) Windows 11 IoT Enterprise LTSC 2024"
+	@echo "  • $(WHITE)Features:$(RESET) NUMA, PCIe ACS override, VirtIO drivers"
+	@echo ""
+	@echo "$(YELLOW)📖 Documentation: $(RESET)docs/WINDOWS_GAMING_RTX2080TI.md"
+	@echo ""
+
+# Windows Gaming VM deployment targets
+deploy-windows-gaming: ## Deploy Windows Gaming VM with RTX 2080 Ti (8 cores, 32GB RAM, GPU passthrough)
+	@echo "$(MAGENTA)🎮 Deploying Windows Gaming VM with RTX 2080 Ti...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-windows-gaming.yml
+
+deploy-windows-gaming-check: ## Check Windows Gaming VM deployment (dry-run)
+	@echo "$(MAGENTA)🔍 Checking Windows Gaming VM deployment...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-windows-gaming.yml --check --diff
+
+deploy-windows-gaming-force: ## Force deploy Windows Gaming VM (even if exists)
+	@echo "$(MAGENTA)🎮 Force deploying Windows Gaming VM...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-windows-gaming.yml -e windows_skip_if_exists=false
+
+deploy-windows-gaming-auto: ## Auto-deploy Windows Gaming VM with RTX 2080 Ti detection
+	@echo "$(MAGENTA)🎮 Auto-deploying Windows Gaming VM with RTX 2080 Ti detection...$(RESET)"
+	@./scripts/deploy-windows-gaming-rtx2080ti.sh
+
+deploy-windows-gaming-custom: ## Deploy Windows Gaming VM with custom configuration (use GPU_PCI_ID, AUDIO_PCI_ID, MEMORY, CORES, STORAGE_LOCATION variables)
+	@echo "$(MAGENTA)🎮 Deploying Windows Gaming VM with custom configuration...$(RESET)"
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy-windows-gaming.yml \
+		$(if $(GPU_PCI_ID),-e 'windows_vm.gpu_passthrough.primary_gpu=$(GPU_PCI_ID)') \
+		$(if $(AUDIO_PCI_ID),-e 'windows_vm.gpu_passthrough.gpu_audio=$(AUDIO_PCI_ID)') \
+		$(if $(MEMORY),-e 'windows_vm.memory=$(MEMORY)') \
+		$(if $(CORES),-e 'windows_vm.cpu.cores=$(CORES)') \
+		$(if $(HOSTNAME),-e 'windows_vm.hostname=$(HOSTNAME)') \
+		$(if $(STORAGE_LOCATION),-e 'windows_vm.storage.location=$(STORAGE_LOCATION)')
+
+# Windows Gaming VM management targets (require VM_ID variable)
+windows-gaming-start: ## Start Windows Gaming VM (requires VM_ID=xxx)
+	@echo "$(MAGENTA)▶️  Starting Windows Gaming VM $(VM_ID)...$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-start VM_ID=300$(RESET)"; exit 1; fi
+	@qm start $(VM_ID)
+	@echo "$(GREEN)✅ Windows Gaming VM $(VM_ID) started$(RESET)"
+
+windows-gaming-stop: ## Stop Windows Gaming VM (requires VM_ID=xxx)
+	@echo "$(MAGENTA)⏹️  Stopping Windows Gaming VM $(VM_ID)...$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-stop VM_ID=300$(RESET)"; exit 1; fi
+	@qm stop $(VM_ID)
+	@echo "$(GREEN)✅ Windows Gaming VM $(VM_ID) stopped$(RESET)"
+
+windows-gaming-restart: ## Restart Windows Gaming VM (requires VM_ID=xxx)
+	@echo "$(MAGENTA)🔄 Restarting Windows Gaming VM $(VM_ID)...$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-restart VM_ID=300$(RESET)"; exit 1; fi
+	@qm restart $(VM_ID)
+	@echo "$(GREEN)✅ Windows Gaming VM $(VM_ID) restarted$(RESET)"
+
+windows-gaming-status: ## Show Windows Gaming VM status (requires VM_ID=xxx)
+	@echo "$(MAGENTA)📊 Windows Gaming VM $(VM_ID) status:$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-status VM_ID=300$(RESET)"; exit 1; fi
+	@qm status $(VM_ID)
+	@echo "\n$(MAGENTA)💻 VM Configuration:$(RESET)"
+	@qm config $(VM_ID) | grep -E "(cores|memory|hostpci|gpu|cpu)" 2>/dev/null || echo "$(YELLOW)VM configuration not available$(RESET)"
+
+windows-gaming-console: ## Connect to Windows Gaming VM console (requires VM_ID=xxx)
+	@echo "$(MAGENTA)🖥️  Connecting to Windows Gaming VM $(VM_ID) console...$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-console VM_ID=300$(RESET)"; exit 1; fi
+	@qm monitor $(VM_ID)
+
+windows-gaming-destroy: ## Destroy Windows Gaming VM (requires VM_ID=xxx and CONFIRM=yes)
+	@echo "$(RED)💀 Destroying Windows Gaming VM $(VM_ID)...$(RESET)"
+	@if [ -z "$(VM_ID)" ]; then echo "$(RED)❌ Error: VM_ID is required. Usage: make windows-gaming-destroy VM_ID=300 CONFIRM=yes$(RESET)"; exit 1; fi
+	@if [ "$(CONFIRM)" != "yes" ]; then echo "$(RED)❌ Error: This is destructive! Add CONFIRM=yes to proceed$(RESET)"; exit 1; fi
+	@qm stop $(VM_ID) 2>/dev/null || true
+	@qm destroy $(VM_ID)
+	@echo "$(GREEN)✅ Windows Gaming VM $(VM_ID) destroyed$(RESET)"
+
+# GPU passthrough utilities
+find-gpu-pci-ids: ## Find RTX 2080 Ti PCI IDs for GPU passthrough
+	@echo "$(CYAN)🔍 Finding RTX 2080 Ti PCI IDs...$(RESET)"
+	@./scripts/find-gpu-pci-ids.sh
+
+check-gpu-passthrough: ## Check GPU passthrough status and IOMMU configuration
+	@echo "$(CYAN)🔧 Checking GPU passthrough status...$(RESET)"
+	@./scripts/gpu-passthrough-manager.sh check
+
+debug-storage: ## Debug Proxmox storage configuration for VM deployment
+	@echo "$(CYAN)💾 Debugging Proxmox storage configuration...$(RESET)"
+	@./scripts/debug-storage.sh

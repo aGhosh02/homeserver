@@ -1,0 +1,99 @@
+---
+# Check if Windows Gaming VM already exists
+
+- name: Check if Windows Gaming VM already exists by ID
+  shell: qm status {{ windows_vm_id }}
+  register: vm_status_check
+  failed_when: false
+  changed_when: false
+
+- name: Check if Windows Gaming VM already exists by name
+  shell: qm list | grep -E "\s+{{ windows_hostname }}\s+"
+  register: vm_name_check
+  failed_when: false
+  changed_when: false
+
+- name: Set VM existence facts
+  set_fact:
+    windows_vm_exists_by_id: "{{ vm_status_check.rc == 0 }}"
+    windows_vm_exists_by_name: "{{ vm_name_check.rc == 0 }}"
+    windows_vm_exists: "{{ vm_status_check.rc == 0 or vm_name_check.rc == 0 }}"
+
+- name: Display existing VM information
+  debug:
+    msg: |
+      📋 VM Existence Check Results:
+      - 🆔 VM ID {{ windows_vm_id }}: {{ 'EXISTS' if windows_vm_exists_by_id else 'Available' }}
+      - 🏷️ Hostname {{ windows_hostname }}: {{ 'EXISTS' if windows_vm_exists_by_name else 'Available' }}
+      - 📊 Overall Status: {{ 'VM EXISTS' if windows_vm_exists else 'Ready for Creation' }}
+
+- name: Handle existing VM based on configuration
+  block:
+    - name: Skip VM creation (VM exists and skip_if_exists is true)
+      debug:
+        msg: |
+          ⏭️  Skipping Windows Gaming VM Creation
+          
+          📋 Existing VM Information:
+          - 🆔 VM ID: {{ windows_vm_id }}
+          - 🏷️ Hostname: {{ windows_hostname }}
+          - ⚙️ Configuration: windows_skip_if_exists = true
+          
+          💡 To force recreation:
+          - Set windows_skip_if_exists: false
+          - Or manually remove the existing VM
+      
+    - name: Set skip creation flag
+      set_fact:
+        skip_windows_vm_creation: true
+
+  when: 
+    - windows_vm_exists
+    - windows_skip_if_exists | default(true)
+
+- name: Handle VM ID conflict (exists but skip_if_exists is false)
+  block:
+    - name: Fail on VM ID conflict
+      fail:
+        msg: |
+          ❌ VM ID Conflict Detected
+          
+          VM ID {{ windows_vm_id }} is already in use. Options:
+          1. Use a different VM ID by setting windows_vm.vmid
+          2. Remove the existing VM manually
+          3. Set windows_skip_if_exists: true to skip creation
+          
+          Current VM using ID {{ windows_vm_id }}:
+          {{ vm_status_check.stdout | default('Unknown VM') }}
+
+  when: 
+    - windows_vm_exists_by_id
+    - not windows_skip_if_exists | default(true)
+
+- name: Handle hostname conflict (exists but skip_if_exists is false)
+  block:
+    - name: Warning on hostname conflict
+      debug:
+        msg: |
+          ⚠️  VM Hostname Conflict Warning
+          
+          Another VM is using hostname "{{ windows_hostname }}":
+          {{ vm_name_check.stdout | default('Unknown VM details') }}
+          
+          This may cause naming conflicts. Consider using a unique hostname.
+
+  when: 
+    - windows_vm_exists_by_name
+    - not windows_vm_exists_by_id
+    - not windows_skip_if_exists | default(true)
+
+- name: Proceed with VM creation
+  debug:
+    msg: |
+      🚀 Proceeding with Windows Gaming VM Creation
+      
+      📋 VM Configuration:
+      - 🆔 VM ID: {{ windows_vm_id }}
+      - 🏷️ Hostname: {{ windows_hostname }}
+      - 💾 Storage: {{ windows_storage_location }}
+  when: not windows_vm_exists or not windows_skip_if_exists | default(true)

@@ -126,6 +126,8 @@
             - rsync
             - rclone
             - borgbackup
+            - nproc
+            - jq
     
     - role: vm_networking
       tags: ['networking', 'vm', 'network']

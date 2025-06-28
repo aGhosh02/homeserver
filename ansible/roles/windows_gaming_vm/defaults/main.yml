@@ -1,0 +1,104 @@
+---
+# Windows Gaming VM Default Configuration
+
+# VM Identification
+windows_vm:
+  vmid: ""  # Will be auto-generated if not set
+  hostname: "windows-gaming"
+  
+  # High-Performance CPU Configuration for Gaming
+  cpu:
+    type: "host"  # Use host CPU type for maximum performance
+    cores: 8
+    numa: true  # Enable NUMA for better memory performance
+    cpu_affinity: "0-7"  # Pin to physical cores 0-7
+    
+  # Memory Configuration (32GB Dedicated)
+  memory: 32768  # 32GB in MB
+  balloon: false  # Disable ballooning for dedicated gaming performance
+  
+  # VM Size and Performance
+  disk_size: "100G"  # Main system disk size
+  
+  # Network Configuration
+  network:
+    bridge: "vmbr0"  # Default bridge
+    mac_address: ""  # Will be auto-generated if not set
+    vlan_tag: ""
+    mtu: ""
+    
+  # Storage Configuration
+  storage:
+    location: ""  # Will be auto-detected if not set
+    cache: "writethrough"  # Safe caching for Windows
+    thin_provisioning: false  # Use thick provisioning for gaming performance
+    
+  # Windows VM Specific Settings
+  machine_type: "q35"  # Modern machine type for Windows
+  bios: "ovmf"  # UEFI for modern Windows support
+  ostype: "win11"  # Windows 11 OS type
+  scsihw: "virtio-scsi-single"  # VirtIO SCSI for better performance
+  
+  # Gaming Performance Optimizations
+  tablet: false  # Disable tablet for gaming
+  agent_enabled: true
+  onboot: false  # Don't start automatically (manual control)
+  localtime: true  # Use local time for Windows
+  
+  # PCIe Configuration for GPU Passthrough
+  pcie:
+    acs_override: true  # Enable ACS override for GPU passthrough
+    
+  # GPU Passthrough Configuration - RTX 2080 Ti
+  gpu_passthrough:
+    enabled: true   # GPU passthrough enabled for RTX 2080 Ti
+    primary_gpu: "01:00.0"  # RTX 2080 Ti GPU PCI ID (update with actual ID)
+    gpu_audio: "01:00.1"   # RTX 2080 Ti HDMI Audio PCI ID (update with actual ID)
+    
+  # VirtIO Driver Configuration
+  virtio:
+    network: true   # Use VirtIO network adapter
+    storage: true   # Use VirtIO storage
+    balloon: false  # Disable VirtIO balloon for gaming
+
+# Download Configuration
+windows_download:
+  temp_dir: "/tmp/windows-gaming-ansible"
+  timeout: 1800  # 30 minutes timeout for large downloads
+  
+  # Windows 11 IoT Enterprise LTSC 2024 ISO
+  windows_iso:
+    url: "https://drive.massgrave.dev/en-us_windows_11_iot_enterprise_ltsc_2024_x64_dvd_f6b14814.iso"
+    filename: "windows_11_iot_enterprise_ltsc_2024_x64.iso"
+    version: "11_IoT_LTSC_2024"
+    
+  # VirtIO Drivers ISO
+  virtio_iso:
+    url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+    filename: "virtio-win.iso"
+    version: "stable"
+
+# VM Existence Check Configuration
+windows_skip_if_exists: true  # Skip VM creation if Windows Gaming VM already exists
+
+# Validation Configuration
+windows_validation:
+  check_disk_space: true
+  minimum_disk_space: "120G"  # Minimum space for VM, Windows ISO, and VirtIO ISO
+  check_network: true
+  check_virtualization: true
+  check_gpu_passthrough: true  # GPU passthrough enabled - validate GPU setup
+  check_cpu_cores: true
+  minimum_cpu_cores: 8  # Require at least 8 CPU cores for gaming VM
+
+# GPU Passthrough Validation (when enabled)
+gpu_validation:
+  check_iommu: true
+  check_vfio_modules: true
+  check_gpu_binding: true
+  
+# Performance Tuning
+performance_tuning:
+  hugepages: true  # Enable hugepages for better memory performance
+  cpu_governor: "performance"  # Set CPU governor to performance mode
+  disable_swap: false  # Keep swap enabled but minimize usage

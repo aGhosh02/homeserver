@@ -1,0 +1,83 @@
+---
+# Variable preparation tasks for Windows Gaming VM
+
+- name: Set Windows VM hostname
+  set_fact:
+    windows_hostname: "{{ windows_vm.hostname | default('windows-gaming') }}"
+
+- name: Generate unique hostname if default
+  set_fact:
+    windows_hostname: "windows-gaming-{{ ansible_date_time.epoch }}"
+  when: windows_vm.hostname | default('windows-gaming') == 'windows-gaming'
+
+- name: Detect storage location automatically
+  shell: pvesm status --content images | awk 'NR>1 && $3=="active" {print $1; exit}'
+  register: auto_storage
+  changed_when: false
+  when: (windows_vm.storage.location | default('')) == ''
+
+- name: Set storage location
+  set_fact:
+    windows_storage_location: "{{ windows_vm.storage.location if (windows_vm.storage.location is defined and windows_vm.storage.location != '') else auto_storage.stdout | default('') }}"
+
+- name: Validate storage location
+  fail:
+    msg: "No suitable storage location found for Windows Gaming VM"
+  when: windows_storage_location == "" or windows_storage_location is not defined
+
+- name: Set disk names based on VM ID (will be set after VM ID generation)
+  set_fact:
+    windows_disk0: "vm-{{ windows_vm_id }}-disk-0"  # EFI disk
+    windows_disk1: "vm-{{ windows_vm_id }}-disk-1"  # Main system disk
+  when: windows_vm_id is defined
+
+- name: Set storage references (will be updated after disk creation)
+  set_fact:
+    windows_disk0_ref: "{{ windows_storage_location }}:{{ windows_disk0 }}"
+    windows_disk1_ref: "{{ windows_storage_location }}:{{ windows_disk1 }}"
+  when: windows_vm_id is defined
+
+- name: Configure disk settings for Windows
+  set_fact:
+    windows_disk_config:
+      efi_format: ",efitype=4m,pre-enrolled-keys=1"  # Secure Boot support
+      thin: "{{ ',aio=native' if not windows_vm.storage.thin_provisioning | default(false) else '' }}"
+      cache_string: "{{ 'cache=' + windows_vm.storage.cache + ',' if windows_vm.storage.cache | default('writethrough') else '' }}"
+
+- name: Build CPU affinity string for pinning
+  set_fact:
+    windows_cpu_affinity_string: "{{ 'cpulimit=' + (windows_vm.cpu.cores | string) + ',cpus=' + windows_vm.cpu.cpu_affinity if windows_vm.cpu.cpu_affinity | default('') else '' }}"
+
+- name: Set VirtIO configuration flags
+  set_fact:
+    virtio_flags:
+      network: "{{ ',model=virtio' if windows_vm.virtio.network | default(true) else ',model=e1000' }}"
+      storage: "{{ 'virtio-scsi-single' if windows_vm.virtio.storage | default(true) else 'lsi' }}"
+
+- name: Prepare GPU passthrough variables (when enabled)
+  block:
+    - name: Validate GPU PCI IDs format
+      fail:
+        msg: "GPU PCI IDs must be specified for passthrough (e.g., '01:00.0')"
+      when: 
+        - windows_vm.gpu_passthrough.primary_gpu | default('') == ''
+        - windows_vm.gpu_passthrough.gpu_audio | default('') == ''
+
+    - name: Set GPU passthrough configuration
+      set_fact:
+        gpu_passthrough_config:
+          primary_gpu: "{{ windows_vm.gpu_passthrough.primary_gpu }}"
+          gpu_audio: "{{ windows_vm.gpu_passthrough.gpu_audio }}"
+          hostpci_primary: "hostpci0: {{ windows_vm.gpu_passthrough.primary_gpu }},pcie=1,x-vga=1"
+          hostpci_audio: "hostpci1: {{ windows_vm.gpu_passthrough.gpu_audio }},pcie=1"
+
+  when: windows_vm.gpu_passthrough.enabled | default(false)
+
+- name: Display variable preparation summary
+  debug:
+    msg: |
+      📋 Windows Gaming VM Variables Prepared:
+      - 🏷️ Hostname: {{ windows_hostname }}
+      - 💾 Storage: {{ windows_storage_location }}
+      - 🧠 CPU Affinity: {{ windows_cpu_affinity_string | default('Default') }}
+      - 🎮 GPU Passthrough: {{ 'Enabled' if windows_vm.gpu_passthrough.enabled | default(false) else 'Disabled' }}

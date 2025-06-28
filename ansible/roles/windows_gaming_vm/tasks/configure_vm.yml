@@ -1,0 +1,117 @@
+---
+# VM Configuration tasks for Windows Gaming VM
+
+- name: Attach Windows 11 ISO to VM
+  shell: |
+    qm set {{ windows_vm_id }} -ide2 {{ windows_iso_storage_path }},media=cdrom
+  register: windows_iso_attach_result
+  failed_when: windows_iso_attach_result.rc != 0
+
+- name: Attach VirtIO drivers ISO to VM
+  shell: |
+    qm set {{ windows_vm_id }} -ide0 {{ virtio_iso_storage_path }},media=cdrom
+  register: virtio_iso_attach_result
+  failed_when: virtio_iso_attach_result.rc != 0
+
+- name: Configure additional CD-ROM drive for future use
+  shell: |
+    qm set {{ windows_vm_id }} -ide1 none,media=cdrom
+  register: additional_cdrom_result
+  failed_when: additional_cdrom_result.rc != 0
+
+- name: Configure VM for optimal gaming performance
+  shell: |
+    qm set {{ windows_vm_id }} \
+      -description "Windows 11 Gaming VM - High Performance Configuration with {{ windows_vm.cpu.cores }} cores and {{ (windows_vm.memory / 1024) | round(1) }}GB RAM" \
+      -protection 0 \
+      -startup "order=3,up=60,down=30"
+  register: performance_config_result
+  failed_when: performance_config_result.rc != 0
+
+- name: Set VM to boot from Windows ISO for installation
+  shell: |
+    qm set {{ windows_vm_id }} -boot order='ide2;scsi0'
+  register: boot_config_result
+  failed_when: boot_config_result.rc != 0
+
+- name: Configure RNG device for Windows security
+  shell: |
+    qm set {{ windows_vm_id }} -rng0 source=/dev/urandom,max_bytes=1024,period=1000
+  register: rng_config_result
+  failed_when: rng_config_result.rc != 0
+
+- name: Configure TPM for Windows 11 (if supported)
+  shell: |
+    qm set {{ windows_vm_id }} -tpmstate0 {{ windows_storage_location }}:4,version=v2.0
+  register: tpm_config_result
+  failed_when: false  # Don't fail if TPM is not supported
+  when: windows_vm.ostype | default('win11') == 'win11'
+
+- name: Enable Secure Boot for Windows 11
+  shell: |
+    qm set {{ windows_vm_id }} -efidisk0 {{ windows_disk0_ref }},efitype=4m,pre-enrolled-keys=1
+  register: secure_boot_result
+  failed_when: false  # Don't fail if already configured
+  when: windows_vm.ostype | default('win11') == 'win11'
+
+- name: Configure Windows-specific SCSI settings
+  shell: |
+    qm set {{ windows_vm_id }} -scsihw virtio-scsi-single -scsi0 {{ windows_disk1_ref }},iothread=1,queues=4
+  register: scsi_optimization_result
+  failed_when: scsi_optimization_result.rc != 0
+
+- name: Apply audio configuration for gaming
+  shell: |
+    qm set {{ windows_vm_id }} -audio0 device=ich9-intel-hda,driver=spice
+  register: audio_config_result
+  failed_when: audio_config_result.rc != 0
+
+- name: Configure display settings (will be overridden if GPU passthrough is enabled)
+  shell: |
+    qm set {{ windows_vm_id }} -vga qxl,memory=64
+  register: display_config_result
+  failed_when: display_config_result.rc != 0
+  when: not windows_vm.gpu_passthrough.enabled | default(false)
+
+- name: Set spice enhancements for remote access
+  shell: |
+    qm set {{ windows_vm_id }} -spice "port=61{{ windows_vm_id }},addr=127.0.0.1,disable-ticketing=1,seamless-migration=on"
+  register: spice_config_result
+  failed_when: spice_config_result.rc != 0
+  when: not windows_vm.gpu_passthrough.enabled | default(false)
+
+- name: Configure VM tags for management
+  shell: |
+    qm set {{ windows_vm_id }} -tags "gaming,windows,high-performance,vm-{{ windows_vm_id }}"
+  register: tags_config_result
+  failed_when: tags_config_result.rc != 0
+
+- name: Display VM configuration summary
+  debug:
+    msg: |
+      ✅ Windows Gaming VM Configuration Complete
+      
+      📋 VM Details:
+      - 🆔 VM ID: {{ windows_vm_id }}
+      - 💾 Name: {{ windows_hostname }}
+      - 🧠 CPU: {{ windows_vm.cpu.cores }} cores ({{ windows_vm.cpu.type }})
+      - 🛠️ Memory: {{ windows_vm.memory }}MB ({{ (windows_vm.memory / 1024) | round(1) }}GB)
+      - 💿 System Disk: {{ windows_vm.disk_size }}
+      - 🎈 Balloon: {{ windows_vm.balloon | default(false) | ternary('Enabled', 'Disabled') }}
+      - 🔧 Machine: {{ windows_vm.machine_type | default('q35') }}
+      - 💻 BIOS: {{ windows_vm.bios | default('ovmf') }} (UEFI)
+      - 🛡️ TPM 2.0: {{ 'Configured' if tpm_config_result.rc == 0 else 'Not Available' }}
+      - 🔒 Secure Boot: {{ 'Enabled' if (windows_vm.ostype | default('win11')) == 'win11' else 'Disabled' }}
+      
+      📀 Attached Media:
+      - 🖥️ Windows ISO: IDE2 (Boot Priority)
+      - 🔧 VirtIO Drivers: IDE0
+      - 💿 Additional CD-ROM: IDE1 (Available)
+      
+      🚀 Next Steps:
+      1. Configure GPU passthrough (if enabled)
+      2. Apply performance tuning
+      3. Start VM: qm start {{ windows_vm_id }}
+      4. Access VM console for Windows installation
+      5. Install VirtIO drivers during Windows setup
+      6. After installation, remove ISOs and change boot order

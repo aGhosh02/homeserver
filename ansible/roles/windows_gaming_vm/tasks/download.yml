@@ -1,0 +1,118 @@
+---
+# Download tasks for Windows Gaming VM ISOs
+
+- name: Create temporary download directory
+  file:
+    path: "{{ windows_download.temp_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if Windows ISO already exists
+  stat:
+    path: "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}"
+  register: windows_iso_exists
+
+- name: Check if VirtIO ISO already exists
+  stat:
+    path: "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}"
+  register: virtio_iso_exists
+
+- name: Download Windows 11 IoT Enterprise LTSC 2024 ISO
+  get_url:
+    url: "{{ windows_download.windows_iso.url }}"
+    dest: "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}"
+    timeout: "{{ windows_download.timeout }}"
+    mode: '0644'
+  register: windows_iso_download
+  when: not windows_iso_exists.stat.exists
+  retries: 3
+  delay: 10
+
+- name: Download VirtIO drivers ISO
+  get_url:
+    url: "{{ windows_download.virtio_iso.url }}"
+    dest: "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}"
+    timeout: "{{ windows_download.timeout }}"
+    mode: '0644'
+  register: virtio_iso_download
+  when: not virtio_iso_exists.stat.exists
+  retries: 3
+  delay: 10
+
+- name: Verify downloaded Windows ISO
+  stat:
+    path: "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}"
+  register: windows_iso_final_check
+
+- name: Verify downloaded VirtIO ISO
+  stat:
+    path: "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}"
+  register: virtio_iso_final_check
+
+- name: Fail if Windows ISO is missing
+  fail:
+    msg: "Windows ISO download failed or file is missing"
+  when: not windows_iso_final_check.stat.exists
+
+- name: Fail if VirtIO ISO is missing
+  fail:
+    msg: "VirtIO ISO download failed or file is missing"
+  when: not virtio_iso_final_check.stat.exists
+
+- name: Get ISO file sizes for verification
+  shell: |
+    windows_size=$(stat -c%s "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}" | numfmt --to=iec)
+    virtio_size=$(stat -c%s "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}" | numfmt --to=iec)
+    echo "Windows ISO: $windows_size, VirtIO ISO: $virtio_size"
+  register: iso_sizes
+  changed_when: false
+
+- name: Copy ISOs to Proxmox storage if needed
+  block:
+    - name: Check if ISOs should be copied to storage
+      shell: pvesm path {{ windows_storage_location }}:iso 2>/dev/null || echo "/var/lib/vz/template/iso"
+      register: iso_storage_path
+      changed_when: false
+
+    - name: Copy Windows ISO to Proxmox storage
+      copy:
+        src: "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}"
+        dest: "{{ iso_storage_path.stdout }}/{{ windows_download.windows_iso.filename }}"
+        remote_src: yes
+        mode: '0644'
+      when: iso_storage_path.stdout != windows_download.temp_dir
+
+    - name: Copy VirtIO ISO to Proxmox storage
+      copy:
+        src: "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}"
+        dest: "{{ iso_storage_path.stdout }}/{{ windows_download.virtio_iso.filename }}"
+        remote_src: yes
+        mode: '0644'
+      when: iso_storage_path.stdout != windows_download.temp_dir
+
+    - name: Set ISO storage paths
+      set_fact:
+        windows_iso_storage_path: "{{ iso_storage_path.stdout }}/{{ windows_download.windows_iso.filename }}"
+        virtio_iso_storage_path: "{{ iso_storage_path.stdout }}/{{ windows_download.virtio_iso.filename }}"
+
+  rescue:
+    - name: Use local ISO paths if storage copy fails
+      set_fact:
+        windows_iso_storage_path: "{{ windows_download.temp_dir }}/{{ windows_download.windows_iso.filename }}"
+        virtio_iso_storage_path: "{{ windows_download.temp_dir }}/{{ windows_download.virtio_iso.filename }}"
+
+- name: Display download summary
+  debug:
+    msg: |
+      ✅ ISO Download Complete
+      
+      📀 Downloaded ISOs:
+      - 🖥️ Windows 11 IoT LTSC 2024: {{ windows_download.windows_iso.filename }}
+      - 🔧 VirtIO Drivers: {{ windows_download.virtio_iso.filename }}
+      - 📊 File Sizes: {{ iso_sizes.stdout }}
+      
+      📍 Storage Locations:
+      - 🖥️ Windows ISO: {{ windows_iso_storage_path }}
+      - 🔧 VirtIO ISO: {{ virtio_iso_storage_path }}
+      
+      🎯 Ready for VM creation!

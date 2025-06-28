@@ -1,0 +1,123 @@
+---
+# Windows Gaming VM Deployment Playbook
+# This playbook deploys a high-performance Windows Gaming VM with GPU passthrough support
+
+- name: Deploy Windows Gaming VM on Proxmox VE
+  hosts: proxmox
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    # Default Windows Gaming VM configuration
+    windows_vm:
+      hostname: "windows-gaming"
+      vmid: ""  # Auto-generated
+      
+      # High-performance CPU configuration
+      cpu:
+        type: "host"
+        cores: 8
+        numa: true
+        cpu_affinity: "0-7"  # Pin to physical cores 0-7
+        
+      # 32GB dedicated memory
+      memory: 32768
+      balloon: false
+      
+      # 100GB system disk
+      disk_size: "100G"
+      
+      # Storage configuration
+      storage:
+        location: ""  # Auto-detected
+        cache: "writethrough"
+        thin_provisioning: false  # Thick provisioning for performance
+        
+      # Network configuration
+      network:
+        bridge: "vmbr0"
+        mac_address: ""  # Auto-generated
+        
+      # VM behavior
+      onboot: false  # Manual start for gaming
+      agent_enabled: true
+      
+      # GPU passthrough for RTX 2080 Ti (update PCI IDs with actual values)
+      gpu_passthrough:
+        enabled: true     # GPU passthrough enabled for RTX 2080 Ti
+        primary_gpu: "01:00.0"  # RTX 2080 Ti GPU PCI ID (update with actual)
+        gpu_audio: "01:00.1"   # RTX 2080 Ti HDMI Audio PCI ID (update with actual)
+        
+      # PCIe configuration
+      pcie:
+        acs_override: true
+    
+    # Performance tuning
+    performance_tuning:
+      hugepages: true
+      cpu_governor: "performance"
+      
+    # Download configuration
+    windows_download:
+      temp_dir: "/tmp/windows-gaming-ansible"
+      timeout: 1800
+      
+      windows_iso:
+        url: "https://drive.massgrave.dev/en-us_windows_11_iot_enterprise_ltsc_2024_x64_dvd_f6b14814.iso"
+        filename: "windows_11_iot_enterprise_ltsc_2024_x64.iso"
+        
+      virtio_iso:
+        url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+        filename: "virtio-win.iso"
+
+  pre_tasks:
+    - name: Display Windows Gaming VM deployment information
+      debug:
+        msg: |
+          🎮 Starting Windows Gaming VM Deployment
+          
+          📋 Configuration:
+          - 🧠 CPU: {{ windows_vm.cpu.cores }} cores ({{ windows_vm.cpu.type }})
+          - 💾 Memory: {{ (windows_vm.memory / 1024) | round(1) }}GB
+          - 💿 Disk: {{ windows_vm.disk_size }}
+          - 🎯 GPU Passthrough: {{ windows_vm.gpu_passthrough.enabled | ternary('Enabled', 'Disabled') }}
+          - ⚡ Performance Tuning: {{ performance_tuning.hugepages | ternary('Enabled', 'Disabled') }}
+          
+          📊 Target Host: {{ inventory_hostname }}
+          🚀 Starting deployment...
+
+  roles:
+    - role: proxmox_base
+      tags: ['base', 'prerequisites']
+      
+    - role: gpu_passthrough
+      tags: ['gpu', 'passthrough']
+      when: windows_vm.gpu_passthrough.enabled | default(false)
+      
+    - role: windows_gaming_vm
+      tags: ['windows', 'gaming', 'vm']
+
+  post_tasks:
+    - name: Display deployment completion summary
+      debug:
+        msg: |
+          🎉 Windows Gaming VM Deployment Complete!
+          
+          📋 VM Details:
+          - 🆔 VM ID: {{ windows_vm_id | default('Auto-generated') }}
+          - 🏷️ Hostname: {{ windows_vm.hostname }}
+          - 🖥️ Access: Proxmox Web UI → Virtual Machines → VM {{ windows_vm_id | default('???') }}
+          
+          🚀 Next Steps:
+          1. Start VM in Proxmox web interface
+          2. Connect monitor to GPU (if passthrough enabled)
+          3. Follow Windows 11 installation process
+          4. Install VirtIO drivers and GPU drivers
+          
+          💡 Pro Tips:
+          - Use thick provisioning for better gaming performance
+          - Enable Windows Game Mode after installation
+          - Install MSI Afterburner for GPU monitoring
+          - Configure Windows power settings to High Performance
+          
+          🎮 Happy Gaming!

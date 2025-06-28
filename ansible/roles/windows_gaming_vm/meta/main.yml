@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  author: Homeserver Automation
+  description: Windows Gaming VM deployment for Proxmox VE with GPU passthrough support
+  company: Personal
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+  galaxy_tags:
+    - proxmox
+    - virtualization
+    - windows
+    - gaming
+    - gpu-passthrough
+
+dependencies:
+  - role: proxmox_base
+  - role: gpu_passthrough
+    when: windows_vm.gpu_passthrough.enabled | default(false)

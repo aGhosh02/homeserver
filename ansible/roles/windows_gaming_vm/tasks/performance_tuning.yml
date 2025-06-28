@@ -1,0 +1,243 @@
+---
+# Performance tuning tasks for Windows Gaming VM
+
+- name: Configure hugepages for better memory performance
+  block:
+    - name: Set hugepage size configuration
+      set_fact:
+        hugepage_size_mb: 2048  # 2GB hugepages
+
+    - name: Calculate hugepage requirements
+      set_fact:
+        required_hugepages: "{{ ((windows_vm.memory | int) / hugepage_size_mb) | round(0, 'ceil') | int }}"
+
+    - name: Check current hugepage configuration
+      shell: cat /proc/meminfo | grep HugePages_Total | awk '{print $2}'
+      register: current_hugepages
+      changed_when: false
+
+    - name: Configure hugepages in sysctl
+      sysctl:
+        name: vm.nr_hugepages
+        value: "{{ required_hugepages }}"
+        sysctl_file: /etc/sysctl.d/99-gaming-vm.conf
+        reload: yes
+      when: current_hugepages.stdout | int < required_hugepages | int
+
+    - name: Enable hugepages in VM configuration
+      shell: |
+        qm set {{ windows_vm_id }} -hugepages 1024
+      register: hugepages_vm_config
+      failed_when: hugepages_vm_config.rc != 0
+      when: not (skip_windows_vm_creation | default(false))
+
+  when: performance_tuning.hugepages | default(true)
+
+- name: Configure CPU governor for performance
+  block:
+    - name: Check current CPU governor
+      shell: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+      register: current_governor
+      changed_when: false
+      failed_when: false
+
+    - name: Set CPU governor to performance
+      shell: |
+        for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+          echo performance > "$cpu"
+        done
+      when: 
+        - current_governor.rc == 0
+        - current_governor.stdout != "performance"
+        - performance_tuning.cpu_governor | default("performance") == "performance"
+
+    - name: Make CPU governor setting persistent
+      copy:
+        content: |
+          # Gaming VM CPU Governor Configuration
+          ACTION=="add", SUBSYSTEM=="cpu", ATTR{cpufreq/scaling_governor}="performance"
+        dest: /etc/udev/rules.d/99-gaming-cpu-governor.rules
+        mode: '0644'
+      when: performance_tuning.cpu_governor | default("performance") == "performance"
+
+  when: performance_tuning.cpu_governor is defined
+
+- name: Configure CPU isolation for dedicated gaming performance
+  block:
+    - name: Check current kernel parameters
+      shell: cat /proc/cmdline
+      register: current_cmdline
+      changed_when: false
+
+    - name: Configure CPU isolation kernel parameters
+      lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt isolcpus={{ windows_vm.cpu.cpu_affinity }} nohz_full={{ windows_vm.cpu.cpu_affinity }} rcu_nocbs={{ windows_vm.cpu.cpu_affinity }}"'
+        backup: yes
+      register: isolation_grub_config
+      when: 
+        - windows_vm.cpu.cpu_affinity is defined
+        - windows_vm.cpu.cpu_affinity != ""
+        - "'isolcpus=' + windows_vm.cpu.cpu_affinity not in current_cmdline.stdout"
+
+    - name: Update GRUB for CPU isolation
+      command: update-grub
+      when: isolation_grub_config.changed
+      notify: reboot required
+
+  when: windows_vm.cpu.cpu_affinity is defined and windows_vm.cpu.cpu_affinity != ""
+
+- name: Configure memory allocation optimizations
+  block:
+    - name: Set memory allocation policies
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-gaming-vm.conf
+        reload: no
+      loop:
+        - { name: "vm.swappiness", value: "1" }  # Minimize swap usage
+        - { name: "vm.dirty_ratio", value: "15" }  # Reduce dirty page ratio
+        - { name: "vm.dirty_background_ratio", value: "5" }  # Reduce background dirty ratio
+
+    - name: Check if scheduler migration cost parameter exists
+      stat:
+        path: /proc/sys/kernel/sched_migration_cost_ns
+      register: sched_migration_cost_exists
+
+    - name: Set CPU migration cost (if available)
+      sysctl:
+        name: "kernel.sched_migration_cost_ns"
+        value: "5000000"  # Reduce CPU migration
+        sysctl_file: /etc/sysctl.d/99-gaming-vm.conf
+        reload: no
+      when: sched_migration_cost_exists.stat.exists
+
+    - name: Reload sysctl configuration (ignore invalid parameters)
+      shell: |
+        sysctl -p /etc/sysctl.d/99-gaming-vm.conf || true
+      register: sysctl_reload_result
+      changed_when: false
+
+- name: Configure I/O scheduler optimizations
+  block:
+    - name: Check current I/O schedulers
+      shell: |
+        for disk in /sys/block/*/queue/scheduler; do
+          echo "$disk: $(cat $disk)"
+        done
+      register: current_schedulers
+      changed_when: false
+
+    - name: Set I/O scheduler to mq-deadline for SSDs
+      shell: |
+        for disk in /sys/block/*/queue/scheduler; do
+          if [[ -f "$disk" ]]; then
+            echo mq-deadline > "$disk" 2>/dev/null || true
+          fi
+        done
+      when: "'mq-deadline' not in current_schedulers.stdout"
+
+- name: Configure network optimizations for gaming
+  block:
+    - name: Set network performance parameters
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-gaming-vm.conf
+        reload: no
+      loop:
+        - { name: "net.core.rmem_max", value: "16777216" }  # Increase receive buffer
+        - { name: "net.core.wmem_max", value: "16777216" }  # Increase send buffer
+        - { name: "net.ipv4.tcp_rmem", value: "4096 87380 16777216" }  # TCP receive buffer
+        - { name: "net.ipv4.tcp_wmem", value: "4096 65536 16777216" }  # TCP send buffer
+        - { name: "net.core.netdev_max_backlog", value: "5000" }  # Increase netdev backlog
+
+    - name: Apply network sysctl configuration
+      shell: |
+        sysctl -p /etc/sysctl.d/99-gaming-vm.conf || true
+      register: network_sysctl_reload_result
+      changed_when: false
+
+- name: Configure interrupt handling optimizations
+  block:
+    - name: Check if irqbalance is installed
+      command: which irqbalance
+      register: irqbalance_check
+      failed_when: false
+      changed_when: false
+
+    - name: Stop and disable irqbalance for manual IRQ management
+      systemd:
+        name: irqbalance
+        state: stopped
+        enabled: no
+      when: irqbalance_check.rc == 0
+
+    - name: Create IRQ optimization script
+      copy:
+        content: |
+          #!/bin/bash
+          # IRQ optimization for gaming VM
+          
+          # Find network interface IRQs and bind to specific CPUs
+          for irq in $(grep -E "eth|enp" /proc/interrupts | cut -d: -f1 | tr -d ' '); do
+            echo 2 > /proc/irq/$irq/smp_affinity 2>/dev/null || true
+          done
+          
+          # Find storage IRQs and bind to specific CPUs  
+          for irq in $(grep -E "nvme|sata|scsi" /proc/interrupts | cut -d: -f1 | tr -d ' '); do
+            echo 4 > /proc/irq/$irq/smp_affinity 2>/dev/null || true
+          done
+        dest: /usr/local/bin/gaming-vm-irq-optimize.sh
+        mode: '0755'
+
+    - name: Create systemd service for IRQ optimization
+      copy:
+        content: |
+          [Unit]
+          Description=Gaming VM IRQ Optimization
+          After=multi-user.target
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/gaming-vm-irq-optimize.sh
+          RemainAfterExit=yes
+          
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/gaming-vm-irq-optimize.service
+        mode: '0644'
+
+    - name: Enable IRQ optimization service
+      systemd:
+        name: gaming-vm-irq-optimize
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+- name: Display performance tuning summary
+  debug:
+    msg: |
+      ✅ Performance Tuning Configuration Complete
+      
+      🚀 Applied Optimizations:
+      - 🧠 Hugepages: {{ performance_tuning.hugepages | default(true) | ternary('Configured (' + required_hugepages|string + ' pages)', 'Disabled') }}
+      - ⚡ CPU Governor: {{ performance_tuning.cpu_governor | default('performance') }}
+      - 🎯 CPU Isolation: {{ 'Enabled (' + windows_vm.cpu.cpu_affinity + ')' if windows_vm.cpu.cpu_affinity is defined else 'Disabled' }}
+      - 💾 Memory Optimization: Applied
+      - 💿 I/O Scheduler: Optimized
+      - 🔗 Network Tuning: Applied
+      - 🔧 IRQ Management: Optimized
+      
+      ⚠️  Important Notes:
+      - Some changes require a reboot to take effect
+      - CPU isolation may reduce host system performance
+      - Monitor system performance after changes
+      - Adjust settings based on your specific hardware
+      
+      📊 Current System State:
+      - Hugepages: {{ current_hugepages.stdout | default('unknown') }}
+      - CPU Governor: {{ current_governor.stdout | default('unknown') }}
+      - Memory Swappiness: Minimized

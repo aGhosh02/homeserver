@@ -1,0 +1,21 @@
+---
+# Handlers for Windows Gaming VM
+
+- name: restart systemd-resolved
+  systemd:
+    name: systemd-resolved
+    state: restarted
+  become: yes
+
+- name: reload sysctl
+  command: sysctl -p
+  become: yes
+
+- name: update grub
+  command: update-grub
+  become: yes
+  notify: reboot required
+
+- name: reboot required
+  debug:
+    msg: "Reboot required for changes to take effect"

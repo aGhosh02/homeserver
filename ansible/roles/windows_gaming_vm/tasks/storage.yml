@@ -1,0 +1,62 @@
+---
+# Storage preparation tasks for Windows Gaming VM
+
+- name: Check storage availability
+  shell: pvesm status | grep "{{ windows_storage_location }}" | awk '{print $4}'
+  register: storage_free_space
+  changed_when: false
+
+- name: Convert storage space to GB for comparison
+  shell: |
+    space="{{ storage_free_space.stdout }}"
+    if echo "$space" | grep -q '^[0-9]\+$'; then
+      echo $((space / 1024 / 1024))
+    elif echo "$space" | grep -qi 'T$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number * 1024))
+    elif echo "$space" | grep -qi 'G$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $number
+    elif echo "$space" | grep -qi 'M$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number / 1024))
+    elif echo "$space" | grep -qi 'K$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number / 1024))
+    else
+      echo $((space / 1024 / 1024 / 1024))
+    fi
+  args:
+    executable: /bin/bash
+  register: storage_free_gb
+  changed_when: false
+
+- name: Calculate required storage space
+  set_fact:
+    required_storage_gb: "{{ (windows_vm.disk_size | regex_replace('G', '') | int) + 4 + 10 }}"  # VM disk + EFI + buffer
+
+- name: Validate sufficient storage space
+  fail:
+    msg: |
+      Insufficient storage space for Windows Gaming VM
+      Available: {{ storage_free_gb.stdout }}GB
+      Required: {{ required_storage_gb }}GB ({{ windows_vm.disk_size }} VM + 4GB EFI + 10GB buffer)
+  when: storage_free_gb.stdout | int < required_storage_gb | int
+
+- name: Display storage information
+  debug:
+    msg: |
+      💾 Storage Configuration:
+      - 📍 Location: {{ windows_storage_location }}
+      - 💿 Available: {{ storage_free_gb.stdout }}GB
+      - 📏 Required: {{ required_storage_gb }}GB
+      - 🎯 VM Disk Size: {{ windows_vm.disk_size }}
+      - ⚡ Cache Mode: {{ windows_vm.storage.cache | default('writethrough') }}
+      - 📦 Thin Provisioning: {{ windows_vm.storage.thin_provisioning | default(false) | ternary('Enabled', 'Disabled') }}
+
+- name: Prepare storage optimization settings
+  set_fact:
+    storage_optimizations:
+      discard: "{{ ',discard=on' if windows_vm.storage.thin_provisioning | default(false) else '' }}"
+      io_thread: ",iothread=1"  # Enable IO threads for better performance
+      ssd_emulation: ",ssd=1"   # Enable SSD emulation for Windows optimization

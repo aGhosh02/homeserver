@@ -1,0 +1,240 @@
+---
+# Validation tasks for Windows Gaming VM deployment
+
+- name: Check available CPU cores
+  shell: nproc
+  register: cpu_cores
+  changed_when: false
+  when: windows_validation.check_cpu_cores | default(true)
+
+- name: Debug CPU cores detection
+  debug:
+    msg: "CPU cores detected: {{ cpu_cores.stdout | default('not detected') }}"
+  when: windows_validation.check_cpu_cores | default(true)
+
+- name: Validate minimum CPU cores for gaming
+  fail:
+    msg: "Insufficient CPU cores for gaming VM. Available: {{ cpu_cores.stdout | default('Unknown') }}, Required: {{ windows_validation.minimum_cpu_cores | default(8) }}"
+  when:
+    - windows_validation.check_cpu_cores | default(true)
+    - cpu_cores.stdout is defined
+    - cpu_cores.stdout != ""
+    - cpu_cores.stdout | int < (windows_validation.minimum_cpu_cores | default(8))
+
+- name: Check virtualization support
+  shell: |
+    if [ -f /proc/cpuinfo ]; then
+      grep -E "(vmx|svm)" /proc/cpuinfo > /dev/null && echo "supported" || echo "not_supported"
+    else
+      echo "unknown"
+    fi
+  register: virt_support
+  changed_when: false
+  when: windows_validation.check_virtualization | default(true)
+
+- name: Validate virtualization support
+  fail:
+    msg: "Hardware virtualization not supported or not enabled"
+  when: 
+    - windows_validation.check_virtualization | default(true)
+    - virt_support.stdout == "not_supported"
+
+- name: Check network connectivity to Windows ISO
+  uri:
+    url: "{{ windows_download.windows_iso.url }}"
+    method: HEAD
+    timeout: 10
+  register: windows_iso_check
+  when: windows_validation.check_network | default(true)
+  failed_when: false
+
+- name: Check network connectivity to VirtIO ISO
+  uri:
+    url: "{{ windows_download.virtio_iso.url }}"
+    method: HEAD
+    timeout: 10
+  register: virtio_iso_check
+  when: windows_validation.check_network | default(true)
+  failed_when: false
+
+- name: Validate network connectivity
+  debug:
+    msg: "⚠️  Warning: Cannot reach download URLs. Downloads may fail."
+  when: 
+    - windows_validation.check_network | default(true)
+    - (windows_iso_check.status is undefined or windows_iso_check.status != 200) or
+      (virtio_iso_check.status is undefined or virtio_iso_check.status != 200)
+
+- name: Check for required Proxmox tools
+  command: which {{ item }}
+  register: tool_check
+  failed_when: tool_check.rc != 0
+  changed_when: false
+  loop:
+    - qm
+    - pvesm
+    - pvesh
+
+- name: Check KVM support
+  stat:
+    path: /dev/kvm
+  register: kvm_device
+
+- name: Validate KVM support
+  fail:
+    msg: "KVM device not found. Ensure KVM is enabled and loaded."
+  when: not kvm_device.stat.exists
+
+- name: Check available storage locations
+  shell: pvesm status --content images | awk 'NR>1 && $3=="active" {print $1}'
+  register: available_storage
+  changed_when: false
+
+- name: Display available storage locations
+  debug:
+    msg: |
+      💾 Available Storage Locations:
+      {% for location in available_storage.stdout_lines %}
+      - {{ location }}
+      {% endfor %}
+  when: available_storage.stdout_lines | length > 0
+
+- name: Validate storage location availability
+  fail:
+    msg: |
+      No active storage locations found that support VM images.
+      
+      This could be due to:
+      1. No storage configured in Proxmox
+      2. Storage not active/enabled
+      3. Storage doesn't support 'images' content type
+      
+      Please check Proxmox storage configuration:
+      - Web UI: Datacenter → Storage
+      - CLI: pvesm status --content images
+  when: available_storage.stdout_lines | length == 0
+
+- name: Check specific storage location (if defined)
+  shell: pvesm status --content images | grep "^{{ windows_vm.storage.location }}"
+  register: specific_storage_check
+  changed_when: false
+  failed_when: false
+  when: 
+    - windows_vm.storage.location is defined
+    - windows_vm.storage.location != ""
+
+- name: Validate specific storage location
+  fail:
+    msg: |
+      Specified storage location '{{ windows_vm.storage.location }}' is not available or doesn't support images.
+      
+      Available storage locations:
+      {% for location in available_storage.stdout_lines %}
+      - {{ location }}
+      {% endfor %}
+  when: 
+    - windows_vm.storage.location is defined
+    - windows_vm.storage.location != ""
+    - specific_storage_check.rc != 0
+
+- name: Check disk space on default storage
+  shell: |
+    storage=$(pvesm status --content images | awk 'NR>1 && $3=="active" {print $1; exit}')
+    if [ -n "$storage" ]; then
+      pvesm status --storage "$storage" | awk 'NR>1 {print $6}'
+    else
+      echo "0"
+    fi
+  register: available_space
+  changed_when: false
+
+- name: Convert available space to GB
+  shell: |
+    space="{{ available_space.stdout }}"
+    if echo "$space" | grep -q '^[0-9]\+$'; then
+      echo $((space / 1024 / 1024))
+    elif echo "$space" | grep -qi 'T$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number * 1024))
+    elif echo "$space" | grep -qi 'G$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $number
+    elif echo "$space" | grep -qi 'M$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number / 1024))
+    elif echo "$space" | grep -qi 'K$'; then
+      number=$(echo "$space" | sed 's/[^0-9]//g')
+      echo $((number / 1024))
+    else
+      echo "0"
+    fi
+  args:
+    executable: /bin/bash
+  register: available_space_gb
+  changed_when: false
+  when: available_space.stdout != "0"
+
+- name: Calculate required storage for Windows Gaming VM
+  set_fact:
+    required_space_gb: "{{ (windows_vm.disk_size | regex_replace('G', '') | int) + 4 + 10 }}"
+
+- name: Validate sufficient disk space
+  fail:
+    msg: |
+      Insufficient disk space for Windows Gaming VM.
+      
+      Required: {{ required_space_gb }}GB ({{ windows_vm.disk_size }} VM + 4GB EFI + 10GB buffer)
+      Available: {{ available_space_gb.stdout | default('0') }}GB
+      
+      Please free up disk space or choose a different storage location.
+  when: 
+    - available_space_gb.stdout is defined
+    - available_space_gb.stdout | int < required_space_gb | int
+
+- name: Validate GPU passthrough prerequisites (when enabled)
+  block:
+    - name: Check IOMMU support
+      shell: |
+        if [ -d /sys/kernel/iommu_groups ]; then
+          echo "supported"
+        else
+          echo "not_supported"
+        fi
+      register: iommu_support
+      changed_when: false
+
+    - name: Validate IOMMU support
+      fail:
+        msg: "IOMMU not supported or not enabled. Required for GPU passthrough."
+      when: iommu_support.stdout == "not_supported"
+
+    - name: Check VFIO modules
+      shell: lsmod | grep vfio
+      register: vfio_modules
+      failed_when: false
+      changed_when: false
+
+    - name: Warn about VFIO modules
+      debug:
+        msg: "⚠️  Warning: VFIO modules not loaded. GPU passthrough may not work."
+      when: vfio_modules.rc != 0
+
+  when: 
+    - windows_validation.check_gpu_passthrough | default(false)
+    - windows_vm.gpu_passthrough.enabled | default(false)
+
+- name: Display validation summary
+  debug:
+    msg: |
+      ✅ Windows Gaming VM Validation Complete
+      
+      📋 System Requirements:
+      - 💾 Available Storage: {{ available_storage.stdout_lines | length }} location(s)
+      - 📏 Disk Space: {{ available_space_gb.stdout | default('unknown') }}GB available / {{ required_space_gb }}GB required
+      - 🧠 CPU Cores: {{ cpu_cores.stdout | default('unknown') }} / {{ windows_validation.minimum_cpu_cores | default(8) }} required
+      - 🎮 Virtualization: {{ virt_support.stdout | default('unknown') }}
+      - 🔗 Network: {{ 'OK' if (windows_iso_check.status | default(0) == 200 and virtio_iso_check.status | default(0) == 200) else 'Warning' }}
+      - 🎯 GPU Passthrough: {{ 'Enabled' if windows_vm.gpu_passthrough.enabled | default(false) else 'Disabled' }}
+      - 🏪 Storage Locations: {{ available_storage.stdout_lines | join(', ') if available_storage.stdout_lines | length > 0 else 'None' }}
+      
+      🚀 Ready for Windows Gaming VM deployment!

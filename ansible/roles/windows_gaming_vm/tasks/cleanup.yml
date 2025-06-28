@@ -1,0 +1,67 @@
+---
+# Cleanup tasks for Windows Gaming VM deployment
+
+- name: Clean up temporary download directory
+  file:
+    path: "{{ windows_download.temp_dir }}"
+    state: absent
+  when: 
+    - windows_download.temp_dir is defined
+    - windows_download.temp_dir != ""
+    - windows_download.temp_dir != "/"
+
+- name: Clean up any temporary files
+  shell: |
+    find /tmp -name "*windows-gaming*" -type f -mtime +1 -delete 2>/dev/null || true
+    find /tmp -name "*virtio-win*" -type f -mtime +1 -delete 2>/dev/null || true
+  changed_when: false
+
+- name: Log deployment completion
+  lineinfile:
+    path: /var/log/proxmox-automation.log
+    line: "{{ ansible_date_time.iso8601 }} - Windows Gaming VM {{ windows_vm_id }} ({{ windows_hostname }}) deployment completed successfully"
+    create: yes
+    mode: '0644'
+
+- name: Display final deployment summary
+  debug:
+    msg: |
+      🎉 Windows Gaming VM Deployment Complete!
+      
+      📋 Final VM Summary:
+      - 🆔 VM ID: {{ windows_vm_id }}
+      - 🏷️ Hostname: {{ windows_hostname }}
+      - 🧠 CPU: {{ windows_vm.cpu.cores }} cores ({{ windows_vm.cpu.type }})
+      - 💾 Memory: {{ (windows_vm.memory / 1024) | round(1) }}GB
+      - 💿 Storage: {{ windows_vm.disk_size }}
+      - 🎮 GPU Passthrough: {{ windows_vm.gpu_passthrough.enabled | default(false) | ternary('Enabled', 'Disabled') }}
+      - ⚡ Performance Tuning: {{ performance_tuning.hugepages | default(false) | ternary('Applied', 'Skipped') }}
+      
+      🚀 Next Steps:
+      1. Start the VM: qm start {{ windows_vm_id }}
+      2. Access VM console in Proxmox web interface
+      3. Follow Windows 11 installation process
+      4. Install VirtIO drivers from attached ISO
+      5. Install GPU drivers (if GPU passthrough enabled)
+      6. Configure Windows for gaming performance
+      
+      📱 Management Commands:
+      - Start VM: qm start {{ windows_vm_id }}
+      - Stop VM: qm stop {{ windows_vm_id }}
+      - VM Status: qm status {{ windows_vm_id }}
+      - VM Config: qm config {{ windows_vm_id }}
+      - Console Access: Proxmox Web UI → VM {{ windows_vm_id }} → Console
+      
+      🎯 Gaming Tips:
+      - Install latest GPU drivers after Windows setup
+      - Enable Windows Game Mode in Settings
+      - Disable Windows Update during gaming sessions
+      - Consider installing MSI Afterburner for GPU monitoring
+      - Use Steam Big Picture or other gaming platforms
+      
+      💡 Troubleshooting:
+      - If VM doesn't start, check logs: qm showcmd {{ windows_vm_id }}
+      - For GPU issues, verify IOMMU groups: find /sys/kernel/iommu_groups/ -type l
+      - Performance issues: Check CPU/memory allocation in Proxmox
+      
+      ✅ Deployment logged to: /var/log/proxmox-automation.log

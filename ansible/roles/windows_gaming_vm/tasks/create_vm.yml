@@ -1,0 +1,101 @@
+---
+# VM Creation tasks for Windows Gaming VM
+
+- name: Create Windows Gaming VM with high-performance configuration
+  shell: |
+    qm create {{ windows_vm_id }} \
+      -agent {{ windows_vm.agent_enabled | default(true) | ternary('1', '0') }} \
+      -cores {{ windows_vm.cpu.cores | default(8) }} \
+      -cpu {{ windows_vm.cpu.type | default('host') }} \
+      -machine {{ windows_vm.machine_type | default('q35') }} \
+      -memory {{ windows_vm.memory | default(32768) }} \
+      -balloon {{ windows_vm.balloon | default(false) | ternary('1', '0') }} \
+      -name {{ windows_hostname }} \
+      -tags gaming,windows,high-performance \
+      -net0 {{ windows_network_string }} \
+      -onboot {{ windows_vm.onboot | default(false) | ternary('1', '0') }} \
+      -ostype {{ windows_vm.ostype | default('win11') }} \
+      -scsihw {{ windows_vm.scsihw | default('virtio-scsi-single') }} \
+      -bios {{ windows_vm.bios | default('ovmf') }} \
+      -localtime {{ windows_vm.localtime | default(true) | ternary('1', '0') }} \
+      -tablet {{ windows_vm.tablet | default(false) | ternary('1', '0') }}
+  register: vm_create_result
+  failed_when: vm_create_result.rc != 0
+
+- name: Validate storage and disk variables before EFI allocation
+  fail:
+    msg: "Required variable {{ item.name }} is not set or empty"
+  when: item.value is undefined or item.value == ""
+  loop:
+    - { name: "windows_storage_location", value: "{{ windows_storage_location | default('') }}" }
+    - { name: "windows_disk0", value: "{{ windows_disk0 | default('') }}" }
+
+- name: Allocate EFI disk for UEFI boot
+  shell: pvesm alloc {{ windows_storage_location }} {{ windows_vm_id }} {{ windows_disk0 }} 4M
+  register: efi_alloc_result
+  failed_when: efi_alloc_result.rc != 0
+
+- name: Create main storage disk for Windows
+  shell: pvesm alloc {{ windows_storage_location }} {{ windows_vm_id }} {{ windows_disk1 }} {{ windows_vm.disk_size | default('100G') }}
+  register: main_disk_result
+  failed_when: main_disk_result.rc != 0
+
+- name: Configure VM disks with gaming optimizations
+  shell: |
+    qm set {{ windows_vm_id }} \
+      -efidisk0 {{ windows_disk0_ref }}{{ windows_disk_config.efi_format }} \
+      -scsi0 {{ windows_disk1_ref }},{{ windows_disk_config.cache_string }}{{ storage_optimizations.discard }}{{ storage_optimizations.io_thread }}{{ storage_optimizations.ssd_emulation }},size={{ windows_vm.disk_size | default('100G') }} \
+      -boot order=scsi0
+  register: disk_config_result
+  failed_when: disk_config_result.rc != 0
+
+- name: Enable NUMA for better memory performance (if configured)
+  shell: qm set {{ windows_vm_id }} -numa 1
+  register: numa_config_result
+  failed_when: numa_config_result.rc != 0
+  when: windows_vm.cpu.numa | default(true)
+
+- name: Configure CPU affinity for dedicated cores (if specified)
+  shell: qm set {{ windows_vm_id }} -cpulimit {{ windows_vm.cpu.cores }} -affinity {{ windows_vm.cpu.cpu_affinity }}
+  register: cpu_affinity_result
+  failed_when: cpu_affinity_result.rc != 0
+  when: windows_vm.cpu.cpu_affinity | default('') != ''
+
+- name: Add additional USB controllers for gaming peripherals
+  shell: |
+    qm set {{ windows_vm_id }} \
+      -usb0 host=spice,usb3=1 \
+      -usb1 host=spice,usb3=1
+  register: usb_config_result
+  failed_when: usb_config_result.rc != 0
+
+- name: Configure Windows-specific optimizations
+  shell: |
+    qm set {{ windows_vm_id }} \
+      -args "-cpu host,+kvm_pv_unhalt,+kvm_pv_eoi,hv_vendor_id=proxmox,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_relaxed,hv_synic,hv_stimer,hv_tlbflush,hv_ipi,hv_frequencies,kvm=on" \
+      -protection 0
+  register: windows_optimization_result
+  failed_when: windows_optimization_result.rc != 0
+
+- name: Display VM creation summary
+  debug:
+    msg: |
+      ✅ Windows Gaming VM Created Successfully
+      
+      📋 VM Configuration:
+      - 🆔 VM ID: {{ windows_vm_id }}
+      - 🏷️ Name: {{ windows_hostname }}
+      - 🧠 CPU: {{ windows_vm.cpu.cores }} cores ({{ windows_vm.cpu.type }})
+      - 🧮 NUMA: {{ windows_vm.cpu.numa | default(true) | ternary('Enabled', 'Disabled') }}
+      - 💾 Memory: {{ windows_vm.memory }}MB ({{ (windows_vm.memory / 1024) | round(1) }}GB)
+      - 💿 System Disk: {{ windows_vm.disk_size }}
+      - 🎈 Balloon: {{ windows_vm.balloon | default(false) | ternary('Enabled', 'Disabled') }}
+      - 🔧 Machine Type: {{ windows_vm.machine_type | default('q35') }}
+      - 💻 BIOS: {{ windows_vm.bios | default('ovmf') }} (UEFI)
+      - 🎮 Gaming Optimizations: Applied
+      
+      🔌 Next Steps:
+      1. Attach Windows and VirtIO ISOs
+      2. Configure GPU passthrough (if enabled)
+      3. Apply performance tuning
+      4. Start VM for Windows installation

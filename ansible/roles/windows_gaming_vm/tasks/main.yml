@@ -1,0 +1,74 @@
+---
+# Main tasks for Windows Gaming VM deployment
+
+- name: Include validation tasks
+  include_tasks: validation.yml
+  tags:
+    - validation
+    - windows-gaming
+
+- name: Include variable preparation tasks
+  include_tasks: prepare_vars.yml
+  tags:
+    - preparation
+    - windows-gaming
+
+- name: Include VM ID generation tasks
+  include_tasks: vm_id.yml
+  tags:
+    - vm-creation
+    - windows-gaming
+
+- name: Include existence check tasks
+  include_tasks: check_existing.yml
+  tags:
+    - existence-check
+    - windows-gaming
+
+- name: Include storage preparation tasks
+  include_tasks: storage.yml
+  tags:
+    - storage
+    - windows-gaming
+
+- name: Include download tasks
+  include_tasks: download.yml
+  tags:
+    - download
+    - windows-gaming
+
+- name: Include VM creation tasks
+  include_tasks: create_vm.yml
+  tags:
+    - vm-creation
+    - windows-gaming
+  when: not windows_vm_exists | default(false)
+
+- name: Include VM configuration tasks
+  include_tasks: configure_vm.yml
+  tags:
+    - vm-configuration
+    - windows-gaming
+  when: not windows_vm_exists | default(false)
+
+- name: Include GPU passthrough tasks
+  include_tasks: gpu_passthrough.yml
+  tags:
+    - gpu-passthrough
+    - windows-gaming
+  when: 
+    - not windows_vm_exists | default(false)
+    - windows_vm.gpu_passthrough.enabled | default(false)
+
+- name: Include performance tuning tasks
+  include_tasks: performance_tuning.yml
+  tags:
+    - performance
+    - windows-gaming
+  when: performance_tuning.hugepages | default(false)
+
+- name: Include cleanup tasks
+  include_tasks: cleanup.yml
+  tags:
+    - cleanup
+    - windows-gaming

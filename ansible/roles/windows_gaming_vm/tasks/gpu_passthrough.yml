@@ -1,0 +1,154 @@
+---
+# GPU passthrough tasks for Windows Gaming VM
+
+- name: Validate GPU passthrough prerequisites
+  block:
+    - name: Check if IOMMU is enabled
+      shell: |
+        if [ -d /sys/kernel/iommu_groups ]; then
+          echo "enabled"
+        else
+          echo "disabled"
+        fi
+      register: iommu_status
+      changed_when: false
+
+    - name: Fail if IOMMU is not enabled
+      fail:
+        msg: |
+          IOMMU is not enabled. GPU passthrough requires IOMMU support.
+          Please enable IOMMU in BIOS and add kernel parameters:
+          - For Intel: intel_iommu=on iommu=pt
+          - For AMD: amd_iommu=on iommu=pt
+      when: iommu_status.stdout == "disabled"
+
+    - name: Check VFIO modules
+      shell: lsmod | grep vfio
+      register: vfio_modules_check
+      failed_when: false
+      changed_when: false
+
+    - name: Load VFIO modules if not loaded
+      shell: |
+        modprobe vfio
+        modprobe vfio_pci
+        modprobe vfio_iommu_type1
+      when: vfio_modules_check.rc != 0
+
+- name: Validate GPU PCI IDs
+  block:
+    - name: Check primary GPU PCI ID format
+      fail:
+        msg: "Primary GPU PCI ID must be specified (e.g., '01:00.0')"
+      when: windows_vm.gpu_passthrough.primary_gpu | default('') == ''
+
+    - name: Check GPU audio PCI ID format
+      fail:
+        msg: "GPU audio PCI ID must be specified (e.g., '01:00.1')"
+      when: windows_vm.gpu_passthrough.gpu_audio | default('') == ''
+
+    - name: Verify GPU PCI devices exist
+      shell: lspci -s {{ item }}
+      register: pci_device_check
+      failed_when: pci_device_check.rc != 0
+      loop:
+        - "{{ windows_vm.gpu_passthrough.primary_gpu }}"
+        - "{{ windows_vm.gpu_passthrough.gpu_audio }}"
+
+- name: Configure GPU passthrough in VM
+  block:
+    - name: Remove default VGA configuration
+      shell: qm set {{ windows_vm_id }} -delete vga
+      register: remove_vga_result
+      failed_when: false  # Don't fail if VGA is not configured
+
+    - name: Configure primary GPU passthrough
+      shell: |
+        qm set {{ windows_vm_id }} -hostpci0 {{ windows_vm.gpu_passthrough.primary_gpu }},pcie=1,x-vga=1
+      register: primary_gpu_config
+      failed_when: primary_gpu_config.rc != 0
+
+    - name: Configure GPU audio passthrough
+      shell: |
+        qm set {{ windows_vm_id }} -hostpci1 {{ windows_vm.gpu_passthrough.gpu_audio }},pcie=1
+      register: gpu_audio_config
+      failed_when: gpu_audio_config.rc != 0
+
+- name: Apply ACS override if enabled
+  block:
+    - name: Check current kernel parameters
+      shell: cat /proc/cmdline
+      register: current_cmdline
+      changed_when: false
+
+    - name: Configure ACS override kernel parameter
+      lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt pcie_acs_override=downstream,multifunction"'
+        backup: yes
+      register: grub_config
+      when: "'pcie_acs_override' not in current_cmdline.stdout"
+
+    - name: Update GRUB configuration
+      command: update-grub
+      when: grub_config.changed
+      notify: reboot required
+
+  when: windows_vm.pcie.acs_override | default(true)
+
+- name: Optimize VM for GPU passthrough
+  shell: |
+    qm set {{ windows_vm_id }} \
+      -cpu host,hidden=1,flags=+pcid \
+      -machine q35 \
+      -bios ovmf \
+      -args "-cpu host,kvm=on,hv_vendor_id=proxmox,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_relaxed,hv_synic,hv_stimer,hv_tlbflush,hv_ipi,hv_frequencies"
+  register: gpu_optimization_result
+  failed_when: gpu_optimization_result.rc != 0
+
+- name: Configure ROM file for GPU (if needed)
+  block:
+    - name: Check if GPU ROM file exists
+      stat:
+        path: "/usr/share/kvm/{{ windows_vm.gpu_passthrough.primary_gpu | replace(':', '_') }}.rom"
+      register: gpu_rom_file
+
+    - name: Configure ROM file for GPU
+      shell: |
+        qm set {{ windows_vm_id }} -hostpci0 {{ windows_vm.gpu_passthrough.primary_gpu }},pcie=1,x-vga=1,romfile={{ windows_vm.gpu_passthrough.primary_gpu | replace(':', '_') }}.rom
+      when: gpu_rom_file.stat.exists
+      register: rom_config_result
+      failed_when: rom_config_result.rc != 0
+
+- name: Get GPU information for verification
+  shell: |
+    primary_gpu_info=$(lspci -s {{ windows_vm.gpu_passthrough.primary_gpu }} -v | head -1)
+    audio_gpu_info=$(lspci -s {{ windows_vm.gpu_passthrough.gpu_audio }} -v | head -1)
+    echo "Primary GPU: $primary_gpu_info"
+    echo "GPU Audio: $audio_gpu_info"
+  register: gpu_info
+  changed_when: false
+
+- name: Display GPU passthrough configuration summary
+  debug:
+    msg: |
+      ✅ GPU Passthrough Configuration Complete
+      
+      🎮 GPU Configuration:
+      {{ gpu_info.stdout }}
+      
+      📋 Passthrough Summary:
+      - 🎯 Primary GPU: {{ windows_vm.gpu_passthrough.primary_gpu }} (hostpci0)
+      - 🔊 GPU Audio: {{ windows_vm.gpu_passthrough.gpu_audio }} (hostpci1)
+      - ⚡ PCIe Mode: Enabled
+      - 🖥️ VGA Passthrough: Enabled
+      - 🔧 ACS Override: {{ windows_vm.pcie.acs_override | default(true) | ternary('Enabled', 'Disabled') }}
+      - 💻 ROM File: {{ 'Configured' if gpu_rom_file.stat.exists | default(false) else 'Not Found' }}
+      
+      ⚠️  Important Notes:
+      - GPU is now exclusively assigned to VM {{ windows_vm_id }}
+      - Host system will lose access to this GPU
+      - Reboot may be required for ACS override changes
+      - Connect monitor directly to GPU for best performance
+      - Ensure GPU drivers are installed in Windows after boot
